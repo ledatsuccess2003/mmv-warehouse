@@ -1,0 +1,627 @@
+<title>Kho MMV – Lộ trình số hóa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --ground: #EFF2F3;
+    --surface: #FFFFFF;
+    --surface-2: #E6EBEE;
+    --ink: #131C24;
+    --ink-2: #46555F;
+    --ink-3: #6E7D87;
+    --line: #CDD6DB;
+    --line-strong: #A9B6BE;
+    --accent: #B8352A;
+    --accent-soft: #F3DEDB;
+    --warn: #A26608;
+    --warn-soft: #F6E7CC;
+    --ok: #1F6B4E;
+    --ok-soft: #D8EAE0;
+    --info: #2B5C7E;
+    --info-soft: #DBE7EF;
+    --shadow: 0 1px 2px rgba(19,28,36,.06), 0 8px 24px -16px rgba(19,28,36,.28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E141A;
+      --surface: #151E26;
+      --surface-2: #1D2831;
+      --ink: #E2E9EE;
+      --ink-2: #A5B4BE;
+      --ink-3: #7E8E99;
+      --line: #27333C;
+      --line-strong: #3A4954;
+      --accent: #E47365;
+      --accent-soft: #3A2020;
+      --warn: #D9A249;
+      --warn-soft: #362A16;
+      --ok: #5FB98F;
+      --ok-soft: #162C23;
+      --info: #7FB2D4;
+      --info-soft: #16262F;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0E141A;
+    --surface: #151E26;
+    --surface-2: #1D2831;
+    --ink: #E2E9EE;
+    --ink-2: #A5B4BE;
+    --ink-3: #7E8E99;
+    --line: #27333C;
+    --line-strong: #3A4954;
+    --accent: #E47365;
+    --accent-soft: #3A2020;
+    --warn: #D9A249;
+    --warn-soft: #362A16;
+    --ok: #5FB98F;
+    --ok-soft: #162C23;
+    --info: #7FB2D4;
+    --info-soft: #16262F;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 20px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 940px; margin: 0 auto; }
+
+  h1, h2, h3, .eyebrow, th, .chip, .phase-num, .stat-num {
+    font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  }
+
+  .eyebrow {
+    font-size: 13px; font-weight: 600; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent);
+  }
+
+  /* ---------- masthead ---------- */
+  header.masthead {
+    border-bottom: 3px solid var(--ink);
+    padding: 56px 0 22px;
+    margin-bottom: 40px;
+  }
+  header.masthead h1 {
+    font-size: clamp(38px, 6.4vw, 62px);
+    font-weight: 700; line-height: .98; letter-spacing: -.01em;
+    text-transform: uppercase; text-wrap: balance;
+    margin: 12px 0 14px;
+  }
+  .standfirst {
+    font-size: 19px; color: var(--ink-2); max-width: 62ch; margin: 0 0 26px;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 0 32px;
+    font-size: 14px; color: var(--ink-3);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+  section { margin: 0 0 56px; }
+  section > h2 {
+    font-size: 15px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink); margin: 0 0 6px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--line-strong);
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  section > h2 .num {
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--accent);
+    letter-spacing: 0;
+  }
+  .lede { color: var(--ink-2); max-width: 70ch; margin: 18px 0 24px; }
+  p { max-width: 72ch; }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; min-width: 640px; }
+  th {
+    text-align: left; font-size: 13px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-2);
+    background: var(--surface-2);
+    padding: 10px 14px; border-bottom: 1px solid var(--line-strong); white-space: nowrap;
+  }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink-2); }
+  tr:last-child td { border-bottom: 0; }
+  td strong { color: var(--ink); font-weight: 600; }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .88em; }
+  code { background: var(--surface-2); padding: 1px 5px; border-radius: 2px; color: var(--ink); }
+  .num-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ---------- chips ---------- */
+  .chip {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 2px; white-space: nowrap;
+  }
+  .chip.crit { background: var(--accent-soft); color: var(--accent); }
+  .chip.high { background: var(--warn-soft); color: var(--warn); }
+  .chip.med  { background: var(--info-soft); color: var(--info); }
+  .chip.ok   { background: var(--ok-soft); color: var(--ok); }
+
+  /* ---------- stat strip ---------- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .stat { background: var(--surface); padding: 16px 18px; }
+  .stat-num { font-size: 30px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .stat-num.alarm { color: var(--accent); }
+  .stat-lab { font-size: 13px; color: var(--ink-3); margin-top: 6px; line-height: 1.35; }
+
+  /* ---------- callout ---------- */
+  .callout {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 4px solid var(--accent); border-radius: 3px;
+    padding: 18px 22px; box-shadow: var(--shadow); margin: 24px 0;
+  }
+  .callout h3 { margin: 0 0 8px; font-size: 19px; font-weight: 600; letter-spacing: .01em; }
+  .callout p { margin: 0; color: var(--ink-2); }
+  .callout.quiet { border-left-color: var(--line-strong); }
+
+  /* ---------- flow ---------- */
+  .flow { display: grid; gap: 18px; }
+  .flowrow { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .flowrow .lab { font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; font-family: "Barlow Condensed", sans-serif; margin-bottom: 10px; }
+  .flowrow.now .lab { color: var(--ink-3); }
+  .flowrow.next .lab { color: var(--ok); }
+  .steps { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; font-size: 14.5px; }
+  .step { background: var(--surface-2); border-radius: 2px; padding: 5px 10px; color: var(--ink-2); }
+  .flowrow.next .step { background: var(--ok-soft); color: var(--ok); }
+  .arr { color: var(--line-strong); font-family: monospace; }
+  .flowrow.now .step.pain { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---------- phases ---------- */
+  .phase {
+    display: grid; grid-template-columns: 64px 1fr; gap: 0 20px;
+    border-top: 1px solid var(--line); padding: 24px 0;
+  }
+  .phase:last-of-type { border-bottom: 1px solid var(--line); }
+  .phase-num {
+    font-size: 40px; font-weight: 700; line-height: .9; color: var(--line-strong);
+    font-variant-numeric: tabular-nums;
+  }
+  .phase.p0 .phase-num { color: var(--accent); }
+  .phase h3 { margin: 0 0 2px; font-size: 25px; font-weight: 600; line-height: 1.15; letter-spacing: .005em; }
+  .phase .when {
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink-3);
+    margin-bottom: 12px; display: block;
+  }
+  .phase ul { margin: 0 0 12px; padding-left: 20px; color: var(--ink-2); }
+  .phase li { margin-bottom: 5px; }
+  .out {
+    font-size: 14.5px; color: var(--ink-2); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 3px; padding: 9px 13px;
+  }
+  .out b { font-family: "Barlow Condensed", sans-serif; letter-spacing: .1em; text-transform: uppercase; font-size: 13px; color: var(--ink-3); font-weight: 600; }
+
+  /* ---------- decisions ---------- */
+  ol.dec { counter-reset: d; list-style: none; padding: 0; margin: 0; }
+  ol.dec li {
+    counter-increment: d; position: relative; padding: 14px 0 14px 44px;
+    border-bottom: 1px solid var(--line); color: var(--ink-2);
+  }
+  ol.dec li:last-child { border-bottom: 0; }
+  ol.dec li::before {
+    content: "Q" counter(d); position: absolute; left: 0; top: 15px;
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--accent);
+  }
+  ol.dec b { color: var(--ink); font-weight: 600; display: block; }
+
+  footer {
+    border-top: 3px solid var(--ink); padding-top: 16px; margin-top: 8px;
+    font-size: 14px; color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  @media (max-width: 620px) {
+    body { font-size: 16px; }
+    .phase { grid-template-columns: 44px 1fr; gap: 0 14px; }
+    .phase-num { font-size: 28px; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">Mermaid Maritime Vietnam · Warehouse &amp; Supply Chain</div>
+  <h1>Kho MMV: từ Excel sang ứng dụng</h1>
+  <p class="standfirst">Kết quả rà soát toàn bộ 8 file trong thư mục Procurement, các lỗi số liệu trong file tồn kho đang chạy, khoảng cách giữa quy trình chính thức và cách làm thực tế, và lộ trình 5 giai đoạn để bàn giao cho IT.</p>
+  <div class="meta">
+    <span><b>Nguồn:</b> BAO_CAO_CONG_VIEC_KHO_CHO_IT.docx · 08-26.xlsx · PR_PRO_001 · PR_PRO_002</span>
+    <span><b>Ngày rà soát:</b> 26/08/2026</span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">01</span> Thư mục có gì</h2>
+  <p class="lede">Tám file, chia làm ba nhóm: một bản yêu cầu, một file dữ liệu thật, và sáu tài liệu quy trình. Bốn file scan đã đọc được qua thư mục ảnh (13 trang).</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>File</th><th>Là gì</th><th>Dùng để</th><th>Trạng thái</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>BAO_CAO_CONG_VIEC_KHO_CHO_IT.docx</strong></td>
+        <td>Bản mô tả nghiệp vụ + yêu cầu chức năng, 10 mục, do Warehouse soạn</td>
+        <td>Đề bài chính cho IT</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+      <tr>
+        <td><strong>08-26.xlsx</strong></td>
+        <td>File tồn kho đang chạy, 20 sheet, 2.1 MB</td>
+        <td>Nguồn dữ liệu thật để migrate</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+      <tr>
+        <td><strong>sơ đồ quy trình tự làm kho.pdf</strong></td>
+        <td>10 bước: check Base.vn → check stock → soạn hàng FIFO/FEFO → phiếu OUT → QC → D/O → đóng gói → 3 kịch bản giao hàng</td>
+        <td>Quy trình vận hành thực tế</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+      <tr>
+        <td><strong>Flowchart - Quy Trình Xuất Hàng.pdf</strong></td>
+        <td>Sơ đồ xuất hàng – giao hàng – đóng job</td>
+        <td>Đối chiếu với sơ đồ trên</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+      <tr>
+        <td><strong>PR_PRO_001 – Purchase Procedure and Vendor Qualification</strong></td>
+        <td>Quy trình mua hàng &amp; đánh giá nhà cung cấp. Rev 01, ban hành 25/12/2024</td>
+        <td>Ràng buộc phần nhập kho, PO và vendor</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+      <tr>
+        <td><strong>PR_PRO_002 – Warehouse Control Procedure</strong></td>
+        <td>Quy trình kiểm soát kho chính thức. Rev 00, ban hành 10/09/2024, CEO duyệt</td>
+        <td>Chuẩn mà app bắt buộc phải tuân theo</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+      <tr>
+        <td><strong>Procurement Flowchart.pdf</strong></td>
+        <td>Sơ đồ mua hàng – trùng đúng phụ lục trang 6 của PR_PRO_001</td>
+        <td>Luồng PO</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+      <tr>
+        <td><strong>Delivery materials flow chart.pdf</strong></td>
+        <td>Sơ đồ giao vật tư – trùng đúng phụ lục trang 5 của PR_PRO_002</td>
+        <td>Luồng giao hàng</td>
+        <td><span class="chip ok">Đã đọc</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout quiet">
+    <h3>Hai file sơ đồ là bản trùng</h3>
+    <p>Procurement Flowchart và Delivery materials flow chart không phải tài liệu độc lập – chúng là phụ lục đã nằm sẵn trong hai quy trình PR_PRO_001 và PR_PRO_002. Tài liệu cần đọc thật sự chỉ có hai bộ quy trình đó.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02</span> Quy mô dữ liệu thật</h2>
+  <p class="lede">Số liệu lấy trực tiếp từ 08-26.xlsx, không phải ước lượng.</p>
+  <div class="stats">
+    <div class="stat"><div class="stat-num">1.490</div><div class="stat-lab">mã hàng trong sheet Material, không trùng mã</div></div>
+    <div class="stat"><div class="stat-num">1.911</div><div class="stat-lab">dòng Movement trong tháng 8</div></div>
+    <div class="stat"><div class="stat-num">1.205</div><div class="stat-lab">phiếu OUT năm 2026 (28.976 dòng)</div></div>
+    <div class="stat"><div class="stat-num">845</div><div class="stat-lab">phiếu IN từ 2018 đến nay</div></div>
+    <div class="stat"><div class="stat-num">41</div><div class="stat-lab">mã JOB (WO26-xxxx) phát sinh trong tháng</div></div>
+    <div class="stat"><div class="stat-num">34</div><div class="stat-lab">mã vật tư tiêu hao cần lên app trước</div></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">03</span> Lỗi tìm thấy trong file đang chạy</h2>
+  <p class="lede">Đây là phần quan trọng nhất và không có trong bản báo cáo gửi IT. Không sửa những lỗi này thì app xây xong vẫn nhận số tồn sai từ ngày đầu.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Mức</th><th>Vấn đề</th><th>Bằng chứng</th><th>Hậu quả</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="chip crit">Nghiêm trọng</span></td>
+        <td><strong>Tồn kho tháng 8 chưa trừ xuất</strong></td>
+        <td>Cột Issue của Material lấy từ <code>SUMIF('Movement 2'!E:E …)</code>, nhưng sheet <code>Movement 2</code> chỉ có <strong>1 dòng dữ liệu</strong>. Tổng Issue = <span class="num-cell">0</span>, trong khi sheet <code>Movement</code> ghi <span class="num-cell">10.301</span> đơn vị đã xuất.</td>
+        <td>Closing = Beginning + Receipt. Toàn bộ 1.490 mã đang báo tồn cao hơn thực tế. Soạn hàng theo file này sẽ hụt hàng.</td>
+      </tr>
+      <tr>
+        <td><span class="chip high">Cao</span></td>
+        <td><strong>Số đầu kỳ phụ thuộc file tháng trước</strong></td>
+        <td><code>=VLOOKUP(F4,[1]Material!$F$4:$L$1491,7,0)</code> – link ra workbook ngoài.</td>
+        <td>Đổi tên hoặc di chuyển file tháng 7 là toàn bộ cột Beginning hỏng. Không có bản chốt số đầu kỳ độc lập.</td>
+      </tr>
+      <tr>
+        <td><span class="chip high">Cao</span></td>
+        <td><strong>SUMIF dùng điều kiện cả cột</strong></td>
+        <td><code>SUMIF('Movement '!E:E, Material!F:F, …)</code> – điều kiện là <code>F:F</code> chứ không phải <code>F4</code>.</td>
+        <td>Chỉ chạy đúng nhờ implicit intersection của Excel cũ. Mở bằng Excel 365 kiểu mảng động hoặc Google Sheets là ra kết quả sai hàng loạt.</td>
+      </tr>
+      <tr>
+        <td><span class="chip high">Cao</span></td>
+        <td><strong>Sheet "Hàng quan trọng" tra cứu sai vùng</strong></td>
+        <td>Dòng 3: <code>VLOOKUP($B3,Material!F4:L1488,…)</code>; dòng 4: <code>Material!F5:L1489</code> – vùng trôi theo dòng, không khóa <code>$</code>.</td>
+        <td>Các mã nằm cuối sheet Material sẽ không tra ra tồn, cột "Tồn hiện tại" hiện trống hoặc sai với một số mã HSD.</td>
+      </tr>
+      <tr>
+        <td><span class="chip med">Trung bình</span></td>
+        <td><strong>Ngày không phải kiểu ngày</strong></td>
+        <td>Trong Movement: 1.176 ô ngày là <em>số</em> (<code>070826</code>), 735 ô là <em>chuỗi</em>.</td>
+        <td>Không lọc/báo cáo theo kỳ được. Phải chuẩn hóa khi migrate, và app phải ghi ngày thật.</td>
+      </tr>
+      <tr>
+        <td><span class="chip med">Trung bình</span></td>
+        <td><strong>Vùng SUM tổng không khớp</strong></td>
+        <td><code>SUM(I4:I2313)</code>, <code>SUM(J4:J3083)</code>, <code>SUM(K4:K4083)</code> trong khi dữ liệu chỉ đến dòng 1.493.</td>
+        <td>Ba con số tổng ở đầu sheet không cùng cơ sở; dễ chốt nhầm khi đối chiếu.</td>
+      </tr>
+      <tr>
+        <td><span class="chip med">Trung bình</span></td>
+        <td><strong>Tên sheet có khoảng trắng thừa</strong></td>
+        <td><code>'Movement '</code>, <code>'DSB '</code>, <code>'job tạm xóa '</code>.</td>
+        <td>Công thức và code import rất dễ gãy vì gõ thiếu dấu cách.</td>
+      </tr>
+      <tr>
+        <td><span class="chip med">Trung bình</span></td>
+        <td><strong>33 dòng xuất không có JOB CODE</strong></td>
+        <td>Trên tổng 1.892 dòng có số lượng xuất.</td>
+        <td>Phần chi phí này không quy được về job nào. App phải bắt buộc chọn JOB.</td>
+      </tr>
+      <tr>
+        <td><span class="chip med">Trung bình</span></td>
+        <td><strong>Vật tư tiêu hao đang được "chia đều"</strong></td>
+        <td>143 dòng xuất vật tư tiêu hao đều có JOB CODE – nhưng theo báo cáo, đó là số phân bổ cuối tháng, không phải số dùng thật.</td>
+        <td>Dữ liệu <em>trông như</em> chính xác nên không ai phát hiện sai. Đây đúng là bài toán app cần giải.</td>
+      </tr>
+      <tr>
+        <td><span class="chip ok">Thuận lợi</span></td>
+        <td><strong>Mã hàng sạch</strong></td>
+        <td>1.490 mã, không có mã trùng.</td>
+        <td>Dùng Code làm khóa chính của database được ngay, không phải làm sạch dữ liệu danh mục.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout">
+    <h3>Một điểm lệch giữa báo cáo và file thật</h3>
+    <p>Báo cáo viết: Material lấy số từ <em>Movement (2)</em>. Thực tế công thức đang lấy <strong>Receipt từ sheet Movement</strong> và <strong>Issue từ sheet Movement 2</strong>. Nghĩa là cơ chế "lý thuyết vs thực tế" mới làm được một nửa, và nửa còn lại (Movement 2) đang bỏ trống. Cần chốt lại cho đúng trước khi mô tả cho IT, nếu không IT sẽ code theo một logic không tồn tại.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">04</span> Quy trình chính thức yêu cầu gì</h2>
+  <p class="lede">Hai bộ quy trình đã được CEO ký duyệt. Đây là chuẩn mà app phải khớp – không phải chỉ khớp với thói quen đang làm. Phần lớn các yêu cầu dưới đây không xuất hiện trong bản báo cáo gửi IT.</p>
+
+  <h3 style="font-size:19px;font-weight:600;margin:26px 0 8px">PR_PRO_002 – Kiểm soát kho <span class="mono" style="font-size:13px;color:var(--ink-3);font-weight:400">Rev 00 · 10/09/2024</span></h3>
+  <ul style="color:var(--ink-2);max-width:74ch">
+    <li><strong>Nhập hàng (2.1):</strong> mỗi lần hàng về, thủ kho phải mời kỹ thuật kiểm <em>7 mục</em> – số lượng, chất lượng, loại, model, nhãn hiệu, kiểm tra vật lý, chức năng – đối chiếu với <strong>đơn hàng (PO)</strong>. Lệch bất thường phải báo Procurement và nhà cung cấp.</li>
+    <li><strong>Hàng không đạt:</strong> tách riêng dạng <em>unserviceable</em>, giữ trong khu vực khóa cho tới khi đóng gói trả nhà cung cấp.</li>
+    <li><strong>Hàng có hạn dùng:</strong> ration thực phẩm/nước, pháo hiệu, thuốc, <em>keo dán</em> và mọi vật tư có shelf-life phải dán nhãn kiểm soát ghi HSD. Hàng không nhãn hoặc hết hạn phải loại bỏ. Hàng hết hạn và hàng trả về sau service để riêng, đưa khỏi khu vực service ngay.</li>
+    <li><strong>Tồn tối thiểu:</strong> giữ đủ phụ tùng theo yêu cầu nhà sản xuất; hàng giao lâu phải đặt <em>trước 3 tháng</em>.</li>
+    <li><strong>Trước khi xuất phục vụ service:</strong> thủ kho phải kiểm tra hạn sử dụng.</li>
+    <li><strong>Pháo hiệu để kho riêng.</strong></li>
+    <li><strong>Xuất hàng (2.2 &amp; 2.4):</strong> chỉ xuất khi nhận được <strong>MATERIAL REQUEST</strong>; thủ kho kiểm phiếu và hàng trước khi bàn giao cho người yêu cầu để đóng gói. Không có hàng thì tìm nhà cung cấp. Biểu mẫu chuẩn: <code>PR_FRM_005 – Spare part request</code>.</li>
+    <li><strong>Giao hàng (2.3):</strong> hàng phải được người của xưởng kiểm tra trước khi giao khách.</li>
+  </ul>
+
+  <h3 style="font-size:19px;font-weight:600;margin:26px 0 8px">PR_PRO_001 – Mua hàng &amp; đánh giá nhà cung cấp <span class="mono" style="font-size:13px;color:var(--ink-3);font-weight:400">Rev 01 · 25/12/2024</span></h3>
+  <ul style="color:var(--ink-2);max-width:74ch">
+    <li>Yêu cầu mua gom qua Trưởng bộ phận, <strong>Tổng giám đốc quyết định</strong>; Buyer chỉ được quyết khi có ủy quyền.</li>
+    <li>Nhà cung cấp phải nằm trong <strong>danh sách đã duyệt</strong>. Chỉ định thẳng một nguồn chỉ khi hãng chỉ định đại lý địa phương, hoặc gấp về thời gian và giá trị <strong>dưới 30.000.000 VNĐ</strong>.</li>
+    <li>Hàng giao cho thủ kho và lưu đúng cách. Hóa đơn chuyển kế toán trong <strong>30 ngày làm việc</strong>; thanh toán nhà cung cấp trong <strong>3 ngày làm việc</strong>.</li>
+    <li>Đánh giá nhà cung cấp theo <strong>6 tiêu chí</strong> (giấy phép, giá, điều kiện giao hàng, điều kiện thanh toán, chất lượng, bảo hành), thang điểm 1–5, kết luận Accept / Accept with negotiation / Reject. Biểu mẫu <code>PR_FRM_004</code>.</li>
+  </ul>
+
+  <h3 style="font-size:19px;font-weight:600;margin:34px 0 14px">Khoảng cách giữa quy trình và thực tế</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Quy trình yêu cầu</th><th>Dữ liệu thực tế cho thấy</th><th>App phải có</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Kiểm hàng nhập 7 mục, đối chiếu PO</strong></td>
+        <td>Phiếu IN chỉ có Date / Deliverer / Supplier. Trong 845 phiếu, chỉ <span class="num-cell">8</span> dòng có nhắc tới PO.</td>
+        <td>Trường số PO bắt buộc + checklist 7 mục, lưu người kiểm và kết quả.</td>
+      </tr>
+      <tr>
+        <td><strong>Hàng không đạt giữ ở khu vực khóa riêng</strong></td>
+        <td>Không có trạng thái chất lượng nào. Cột Status đang chứa fast / low / normal / no, và <span class="num-cell">931</span>/1.490 mã để trống.</td>
+        <td>Trạng thái rõ ràng: dùng được · giữ chờ xử lý · hết hạn · chờ trả nhà cung cấp.</td>
+      </tr>
+      <tr>
+        <td><strong>Mọi hàng có shelf-life phải có nhãn HSD</strong></td>
+        <td>Chỉ 36 mã được theo dõi, trong đó <span class="num-cell">28</span> mã <em>chưa điền HSD</em>. Toàn bộ nhóm keo và hóa chất – keo con chó, Sikaflex, keo ron xuồng, sơn xịt, WD-40 – không có trong danh sách, dù quy trình nêu đích danh "adhesives, glue".</td>
+        <td>Bắt buộc nhập HSD theo nhóm hàng, in nhãn kiểm soát, xuất theo FEFO.</td>
+      </tr>
+      <tr>
+        <td><strong>Tồn tối thiểu theo nhà sản xuất, đặt trước 3 tháng với hàng giao lâu</strong></td>
+        <td>Báo cáo gửi IT đề xuất ngưỡng cố định ≤20 vàng / ≤15 đỏ cho <em>mọi mã</em> – không phân biệt hàng 21 ngày với hàng 110 ngày.</td>
+        <td>Điểm đặt hàng riêng từng mã theo mức dùng × thời gian giao. Dữ liệu thời gian giao đã có sẵn ở sheet Hàng quan trọng (21–110 ngày).</td>
+      </tr>
+      <tr>
+        <td><strong>Pháo hiệu để kho riêng</strong></td>
+        <td><span class="num-cell">707</span>/1.490 mã không có vị trí kho (chỉ 53% có).</td>
+        <td>Vị trí là trường bắt buộc; đánh dấu nhóm hàng nguy hiểm và tách khu riêng.</td>
+      </tr>
+      <tr>
+        <td><strong>Chỉ xuất khi có Material Request (PR_FRM_005)</strong></td>
+        <td>KTV lấy bao tay không viết giấy – đúng là đang làm sai quy trình. Các sheet FE, LJ, RFD, VIKING, DSB, ZODIAC, CHINA, FUJIKURA, OCEAN SAFETY, CONSUMABLE, AIR QUALITY chính là bản Excel của biểu mẫu này.</td>
+        <td>Module Material Request theo mẫu từng hãng. <strong>Báo cáo gửi IT chưa nhắc tới phần này.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>Nhà cung cấp phải nằm trong danh sách đã duyệt và có hồ sơ đánh giá</strong></td>
+        <td>Tên nhà cung cấp gõ tự do trên phiếu IN: <span class="num-cell">158</span> cách viết khác nhau trong 845 phiếu.</td>
+        <td>Danh mục nhà cung cấp chuẩn hóa, gắn với hồ sơ đánh giá 6 tiêu chí.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout">
+    <h3>Phạm vi app đang bị đặt hẹp hơn quy trình</h3>
+    <p>Báo cáo gửi IT mô tả app như một công cụ ghi xuất – nhập. Quy trình chính thức thì bắt đầu sớm hơn (Material Request, PO, kiểm hàng nhập) và kết thúc muộn hơn (kiểm tra trước giao, Delivery Note, hóa đơn). Nếu app chỉ làm phần giữa, ba chỗ đầu và cuối vẫn nằm trên giấy và Excel – và phần lớn sai sót nằm đúng ở đó. Nên chốt phạm vi ngay từ đầu thay vì phát hiện khi đã code xong.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">05</span> Luồng dữ liệu: nay và đích đến</h2>
+  <div class="flow">
+    <div class="flowrow now">
+      <div class="lab">Hiện tại</div>
+      <div class="steps">
+        <span class="step pain">KTV báo miệng / viết giấy</span><span class="arr">→</span>
+        <span class="step">NV kho gõ phiếu OUT</span><span class="arr">→</span>
+        <span class="step pain">copy sang Movement</span><span class="arr">→</span>
+        <span class="step pain">copy sang Movement 2</span><span class="arr">→</span>
+        <span class="step">SUMIF trừ kho</span><span class="arr">→</span>
+        <span class="step pain">cuối tháng chia đều tiêu hao</span>
+      </div>
+    </div>
+    <div class="flowrow next">
+      <div class="lab">Sau khi có app</div>
+      <div class="steps">
+        <span class="step">KTV bấm 3 chạm tại xưởng</span><span class="arr">→</span>
+        <span class="step">log realtime lên server</span><span class="arr">→</span>
+        <span class="step">NV kho duyệt</span><span class="arr">→</span>
+        <span class="step">phiếu OUT tự sinh</span><span class="arr">→</span>
+        <span class="step">ghi song song lý thuyết + thực tế</span><span class="arr">→</span>
+        <span class="step">cost theo JOB realtime</span>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:20px">Bốn chỗ tô đỏ là bốn chỗ mất thời gian và sinh lỗi. App chỉ cần xóa được bốn chỗ đó là đã đạt phần lớn giá trị – phần dashboard đẹp có thể làm sau.</p>
+</section>
+
+<section>
+  <h2><span class="num">06</span> Kế hoạch triển khai</h2>
+  <p class="lede">Năm giai đoạn, xếp theo thứ tự bắt buộc: không thể chạy app trên nền số tồn sai, và không nên thay Excel toàn bộ ngay lần đầu.</p>
+
+  <div class="phase p0">
+    <div class="phase-num">0</div>
+    <div>
+      <h3>Chốt lại số tồn trên Excel</h3>
+      <span class="when">Tuần 1 · Warehouse tự làm, chưa cần IT</span>
+      <ul>
+        <li>Đẩy dữ liệu xuất từ <code>Movement</code> sang <code>Movement 2</code> cho tháng 8, hoặc chốt lại: sheet nào trừ kho thật.</li>
+        <li>Sửa 4 lỗi công thức: SUMIF điều kiện cả cột, VLOOKUP không khóa <code>$</code> ở sheet Hàng quan trọng, vùng SUM tổng, link ngoài <code>[1]Material</code>.</li>
+        <li>Kiểm kê thực tế ít nhất nhóm hàng quan trọng (35 mã có HSD) và nhóm tiêu hao (34 mã) để có số đối chiếu.</li>
+        <li>Đóng băng một bản "số đầu kỳ đã xác nhận" – đây sẽ là số mở màn của database sau này.</li>
+      </ul>
+      <div class="out"><b>Đầu ra</b> &nbsp;File 08-26 đã sửa + biên bản chốt tồn có chữ ký.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">1</div>
+    <div>
+      <h3>Chốt nghiệp vụ và mô hình dữ liệu</h3>
+      <span class="when">Tuần 1–2 · Warehouse + IT ngồi chung</span>
+      <ul>
+        <li><strong>Chốt phạm vi trước tiên:</strong> app dừng ở xuất – nhập, hay bao cả Material Request (PR_FRM_005), số PO và kiểm hàng nhập như quy trình yêu cầu.</li>
+        <li>Danh sách thực thể: Mã hàng, Vị trí, Nhà cung cấp, PO, Material Request, Phiếu IN/OUT, Dòng movement (2 số: lý thuyết &amp; thực tế), JOB/WO, Người dùng, Cuộn vật tư.</li>
+        <li>Chốt quy tắc: đánh số phiếu <code>YYMM###</code>, tách phiếu <code>-1/-2</code>, chặn xuất âm kho, FIFO/FEFO khi soạn hàng, trạng thái chất lượng (dùng được · giữ chờ xử lý · hết hạn · chờ trả NCC).</li>
+        <li><strong>Bỏ ngưỡng cố định 20/15</strong> – thay bằng điểm đặt hàng riêng từng mã tính theo mức dùng × thời gian giao (quy trình yêu cầu đặt trước 3 tháng với hàng giao lâu). Giữ cảnh báo HSD &lt; 14 tháng.</li>
+        <li>Chốt cách lấy danh sách JOB từ Base.vn: có API không, hay export tay theo ngày.</li>
+        <li>Đối chiếu với PR_PRO_002 và sơ đồ tự làm để app không phá vỡ bước QC (A.Đô), D/O 3 bản và Exit Permit.</li>
+      </ul>
+      <div class="out"><b>Đầu ra</b> &nbsp;Tài liệu đặc tả 1 trang/màn hình + sơ đồ dữ liệu để IT ước lượng công.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">2</div>
+    <div>
+      <h3>MVP: app ghi vật tư tiêu hao tại xưởng</h3>
+      <span class="when">Tuần 2–4 · giá trị cao nhất, rủi ro thấp nhất</span>
+      <ul>
+        <li>Chỉ 34 mã tiêu hao + 3 mã cuộn dài. Giao diện tiếng Việt, có hình, tối đa 3 chạm: chọn người → chọn hàng → nhập số lượng + JOB.</li>
+        <li>Chạy offline, tự sync khi có mạng. Tablet Android gắn cố định tại xưởng.</li>
+        <li>Với cuộn dài: ghi số mét mỗi lần cắt, cộng dồn, cảnh báo khi gần hết cuộn.</li>
+        <li>Mỗi lần bấm chính là một Material Request điện tử – hợp thức hóa đúng mục 2.2/2.4 của PR_PRO_002, thay cho việc lấy hàng không giấy tờ hiện nay.</li>
+        <li>Excel vẫn là bản gốc. App chỉ export ra đúng format sheet Movement để NV kho dán vào.</li>
+      </ul>
+      <div class="out"><b>Đầu ra</b> &nbsp;App chạy thật ở xưởng; hết cảnh chia đều chi phí tiêu hao cuối tháng.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">3</div>
+    <div>
+      <h3>Module kho: phiếu OUT/IN, kiểm hàng và cảnh báo</h3>
+      <span class="when">Tuần 5–8</span>
+      <ul>
+        <li>Lập phiếu OUT/IN trên app, tự đánh số tiếp theo, in ra A4 đúng mẫu hiện tại để ký.</li>
+        <li>Ghi song song 2 số: số theo WO (lý thuyết) và số xưởng dùng thật – đây là báo cáo Sales đang cần.</li>
+        <li><strong>Phiếu nhập gắn số PO</strong> + checklist kiểm hàng 7 mục theo mục 2.1; kết quả không đạt tự chuyển hàng sang trạng thái giữ chờ trả nhà cung cấp.</li>
+        <li>Material Request theo mẫu từng hãng (RFD, VIKING, ZODIAC, DSB, FUJIKURA, CHINA, OCEAN SAFETY, FE, LJ, AIR QUALITY) – thay cho các sheet Excel rời hiện nay.</li>
+        <li>Cảnh báo tồn thấp theo điểm đặt hàng từng mã, cảnh báo HSD, chặn xuất quá tồn ngay lúc nhập phiếu.</li>
+        <li>Chuẩn hóa danh mục nhà cung cấp (gộp 158 cách viết tên về danh sách đã duyệt).</li>
+        <li>Xuất file Movement / Movement 2 đúng format để đối chiếu song song với Excel trong 1–2 tháng.</li>
+      </ul>
+      <div class="out"><b>Đầu ra</b> &nbsp;NV kho làm phiếu trên app; Excel chỉ còn để đối chiếu.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">4</div>
+    <div>
+      <h3>Chuyển database thành bản gốc + báo cáo</h3>
+      <span class="when">Tuần 9–12</span>
+      <ul>
+        <li>Migrate lịch sử: 845 phiếu IN (2018–2026), 1.205 phiếu OUT năm 2026, chuẩn hóa toàn bộ trường ngày.</li>
+        <li>Dashboard: tồn kho, JOB đang mở, top hàng xuất nhiều, cost theo JOB, báo cáo chênh lệch lý thuyết/thực tế.</li>
+        <li>Phân quyền 4 nhóm: KTV, NV kho, Quản lý, Sales. Log không xóa được.</li>
+        <li>Ngưng cập nhật Excel; giữ file cũ ở chế độ chỉ đọc để tra cứu.</li>
+      </ul>
+      <div class="out"><b>Đầu ra</b> &nbsp;Database là nguồn duy nhất; Excel về vai trò lưu trữ.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">5</div>
+    <div>
+      <h3>Cập nhật lại quy trình giấy tờ</h3>
+      <span class="when">Song song từ tuần 8</span>
+      <ul>
+        <li>Nâng PR_PRO_002 lên Rev 01 để mô tả đúng cách làm mới – hiện vẫn là Rev 00 từ 09/2024, chưa từng sửa lần nào.</li>
+        <li>Bổ sung phần còn thiếu so với quy trình: nhãn kiểm soát HSD, khu vực giữ hàng không đạt, kho riêng cho pháo hiệu.</li>
+        <li>Đào tạo 15 KTV (buổi ngắn ngay tại xưởng) và 2 NV kho.</li>
+      </ul>
+      <div class="out"><b>Đầu ra</b> &nbsp;Bộ quy trình bản mới, khớp với hệ thống.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">07</span> Cần quyết định trước khi IT bắt tay</h2>
+  <ol class="dec">
+    <li><b>App có bao gồm Material Request và số PO không?</b> Quy trình bắt buộc cả hai. Nếu để ngoài phạm vi, phần đầu và cuối chuỗi vẫn nằm trên giấy – và sai sót phần lớn nằm đúng ở đó.</li>
+    <li><b>Base.vn có API lấy danh sách JOB không?</b> Nếu không, KTV sẽ phải gõ tay số WO – lúc đó cần cơ chế chống gõ sai (chọn từ danh sách đồng bộ mỗi sáng).</li>
+    <li><b>Dữ liệu để ở đâu?</b> SharePoint/OneDrive, server nội bộ tại công ty, hay cloud. Ảnh hưởng trực tiếp tới chi phí, tốc độ và cách app sync offline.</li>
+    <li><b>Ai làm app?</b> IT tự code, thuê ngoài, hay dựng nhanh bằng nền tảng low-code (Power Apps – công ty đang dùng hệ Microsoft). Low-code có thể ra MVP giai đoạn 2 trong 2–3 tuần.</li>
+    <li><b>Bao nhiêu tablet ở xưởng?</b> Một máy chung hay mỗi tổ một máy – quyết định cách đăng nhập: chọn tên từ danh sách hay đăng nhập riêng từng người.</li>
+    <li><b>Có dán mã vạch/QR lên kệ và mã hàng không?</b> Quét mã nhanh và chính xác hơn dropdown 1.490 mã rất nhiều, nhưng phát sinh việc dán nhãn ban đầu.</li>
+    <li><b>Cuộn vật tư quản lý theo từng cuộn hay theo tổng số mét?</b> Theo từng cuộn thì biết chính xác cuộn nào cho job nào, nhưng KTV phải thao tác thêm một bước.</li>
+    <li><b>Nhóm keo và hóa chất có phải theo dõi HSD không?</b> Quy trình nêu đích danh "adhesives, glue" nhưng thực tế chưa mã nào được theo dõi. Nếu có, cần bổ sung vào danh mục hàng cần kiểm soát hạn dùng.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">08</span> Việc làm ngay tuần này</h2>
+  <div class="callout">
+    <h3>Ba việc, theo thứ tự</h3>
+    <p><strong>1.</strong> Xử lý sheet Movement 2 để tồn kho tháng 8 trừ đúng phần đã xuất – việc gấp nhất, đang ảnh hưởng tới soạn hàng hằng ngày. &nbsp;<strong>2.</strong> Điền HSD cho 28 mã còn trống trong sheet Hàng quan trọng và quyết định có đưa nhóm keo/hóa chất vào theo dõi hay không – đây là điểm hiện đang lệch quy trình đã ký. &nbsp;<strong>3.</strong> Trả lời 7 câu ở mục 07, trong đó câu về phạm vi app cần chốt trước – trả lời xong là có thể chốt đặc tả cho IT.</p>
+  </div>
+</section>
+
+<footer>
+  Rà soát 8 file trong thư mục Procurement, gồm 13 trang scan quy trình · số liệu trích trực tiếp từ 08-26.xlsx · 26/08/2026
+</footer>
+
+</div>

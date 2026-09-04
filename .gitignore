@@ -1,0 +1,16 @@
+# file tam
+*.tmp
+*.bak
+~$*
+.DS_Store
+Thumbs.db
+
+# du lieu that xuat ra tu app - khong dua len repo
+users.txt
+movement-app-xuong-*.csv
+movement-app-xuong-*.txt
+
+# file kho va tai lieu goc cua cong ty
+*.xlsx
+*.pdf
+*.docx

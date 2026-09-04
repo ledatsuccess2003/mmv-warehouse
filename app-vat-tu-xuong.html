@@ -1,0 +1,1022 @@
+<title>Lấy vật tư xưởng MMV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style id="app-style">
+:root{
+  --brand:#465FFF; --brand-strong:#3641F5; --brand-soft:#ECF3FF; --on-brand:#FFFFFF;
+  --page:#F9FAFB; --card:#FFFFFF; --sub:#F2F4F7;
+  --line:#E4E7EC; --line-2:#D0D5DD;
+  --title:#1D2939; --text:#344054; --muted:#667085; --faint:#98A2B3;
+  --ok:#039855; --ok-bg:#ECFDF3;
+  --warn:#DC6803; --warn-bg:#FFFAEB;
+  --err:#D92D20; --err-bg:#FEF3F2;
+  --r:12px; --r-lg:16px; --r-sm:8px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --brand:#7C8CFF; --brand-strong:#98A6FF; --brand-soft:#1B2340; --on-brand:#0B1020;
+    --page:#101828; --card:#161E2E; --sub:#1D2939;
+    --line:#1D2939; --line-2:#344054;
+    --title:#F9FAFB; --text:#E4E7EC; --muted:#98A2B3; --faint:#667085;
+    --ok:#4ADE80; --ok-bg:#132A1F;
+    --warn:#FDB022; --warn-bg:#2E2109;
+    --err:#F97066; --err-bg:#2E1513;
+  }
+}
+:root[data-theme="dark"]{
+  --brand:#7C8CFF; --brand-strong:#98A6FF; --brand-soft:#1B2340; --on-brand:#0B1020;
+  --page:#101828; --card:#161E2E; --sub:#1D2939;
+  --line:#1D2939; --line-2:#344054;
+  --title:#F9FAFB; --text:#E4E7EC; --muted:#98A2B3; --faint:#667085;
+  --ok:#4ADE80; --ok-bg:#132A1F;
+  --warn:#FDB022; --warn-bg:#2E2109;
+  --err:#F97066; --err-bg:#2E1513;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);
+  font-family:Outfit,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.tnum{font-variant-numeric:tabular-nums}
+svg{flex:none}
+
+/* ---------- khung: sidebar + noi dung ---------- */
+.layout{min-height:100vh}
+.sidebar{position:fixed;inset:0 auto 0 0;width:290px;background:var(--card);
+  border-right:1px solid var(--line);padding:0 20px 24px;overflow-y:auto;z-index:70;
+  display:flex;flex-direction:column;gap:6px}
+.brandrow{display:flex;align-items:center;gap:11px;height:76px;flex:none}
+.logo{width:38px;height:38px;border-radius:10px;background:var(--brand);color:var(--on-brand);
+  display:grid;place-items:center;font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brandtxt{font-weight:600;font-size:16px;color:var(--title);line-height:1.15}
+.brandtxt small{display:block;font-weight:400;font-size:12px;color:var(--faint)}
+.navlabel{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--faint);padding:16px 12px 6px}
+.navitem{display:flex;align-items:center;gap:11px;width:100%;padding:10px 12px;
+  border-radius:var(--r-sm);color:var(--muted);font-size:15px;font-weight:500;text-align:left;
+  transition:background .12s,color .12s}
+.navitem:hover{background:var(--sub);color:var(--text)}
+.navitem[aria-current="page"]{background:var(--brand-soft);color:var(--brand);font-weight:600}
+.navitem .n{margin-left:auto;font-size:12px;font-weight:600;background:var(--brand);
+  color:var(--on-brand);border-radius:999px;padding:1px 8px;min-width:22px;text-align:center}
+.navitem[aria-current="page"] .n{background:var(--brand);color:var(--on-brand)}
+.sidefoot{margin-top:auto;padding-top:16px;border-top:1px solid var(--line)}
+.usercard{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--r)}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--brand-soft);color:var(--brand);
+  display:grid;place-items:center;font-weight:600;font-size:15px;flex:none}
+.uname{font-weight:600;color:var(--title);font-size:14.5px;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.urole{font-size:12.5px;color:var(--faint)}
+
+.content{margin-left:290px;min-width:0}
+.topbar{position:sticky;top:0;z-index:50;height:65px;background:var(--card);
+  border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 24px}
+.burger{display:none;width:42px;height:42px;border-radius:var(--r-sm);border:1px solid var(--line);
+  align-items:center;justify-content:center;color:var(--muted)}
+.crumb{font-weight:600;color:var(--title);font-size:17px;margin-right:auto}
+.page{padding:24px;max-width:1240px}
+.drawerscrim{display:none}
+@media (max-width:1023px){
+  .sidebar{transform:translateX(-100%);transition:transform .22s ease;box-shadow:none}
+  .sidebar.open{transform:none;box-shadow:0 20px 50px -20px rgba(16,24,40,.45)}
+  .content{margin-left:0}
+  .burger{display:flex}
+  .drawerscrim{display:block;position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:65}
+  .page{padding:18px 16px}
+  .topbar{padding:0 16px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---------- thanh cong cu ---------- */
+.search{margin-bottom:16px}
+.search input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:11px 14px;min-height:46px;color:var(--text)}
+.search input::placeholder{color:var(--faint)}
+.chipbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.fchip{font-size:14px;font-weight:500;padding:8px 14px;border-radius:999px;
+  border:1px solid var(--line);color:var(--muted);background:var(--card);min-height:38px}
+.fchip[aria-pressed="true"]{background:var(--brand);color:var(--on-brand);border-color:var(--brand);font-weight:600}
+.lbl{font-size:12.5px;font-weight:500;color:var(--muted)}
+
+/* ---------- the vat tu ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:14px}
+.card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:18px;display:flex;flex-direction:column;gap:10px;min-height:126px;transition:border-color .14s}
+.card:hover{border-color:var(--line-2)}
+.card.picked{border-color:var(--brand);background:var(--card)}
+.hit{display:flex;flex-direction:column;gap:10px;align-items:stretch;text-align:left;
+  width:100%;flex:1;padding:0}
+.card .nm{font-weight:600;font-size:16px;line-height:1.3;color:var(--title)}
+.card .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto}
+.card .code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--faint)}
+.stock{font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:999px;
+  background:var(--sub);color:var(--muted);white-space:nowrap}
+.stock.low{background:var(--warn-bg);color:var(--warn)}
+.stock.out{background:var(--err-bg);color:var(--err)}
+.roll{font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:999px;
+  background:var(--brand-soft);color:var(--brand)}
+.tick{position:absolute;top:14px;right:14px;width:22px;height:22px;border-radius:50%;
+  background:var(--brand);color:var(--on-brand);display:grid;place-items:center;font-size:13px;font-weight:700}
+
+/* ---------- o so luong ---------- */
+.qty{display:flex;align-items:center;gap:8px}
+.qbtn{width:42px;height:42px;border-radius:var(--r-sm);background:var(--card);
+  border:1px solid var(--line);font-size:20px;font-weight:500;line-height:1;
+  display:grid;place-items:center;color:var(--text)}
+.qbtn:hover{background:var(--sub)}
+.qty input{width:70px;height:42px;text-align:center;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--r-sm);font-weight:600;font-size:16px;
+  font-variant-numeric:tabular-nums;color:var(--title)}
+.qty .u{font-size:14px;font-weight:500;color:var(--muted)}
+
+/* ---------- nut ---------- */
+.btn{font-size:15px;font-weight:600;padding:12px 20px;border-radius:var(--r-sm);
+  min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  transition:background .14s,border-color .14s}
+.btn.primary{background:var(--brand);color:var(--on-brand)}
+.btn.primary:hover{background:var(--brand-strong)}
+.btn.ghost{background:var(--card);color:var(--text);border:1px solid var(--line)}
+.btn.ghost:hover{background:var(--sub)}
+.btn.ok{background:var(--brand);color:var(--on-brand)}
+.btn.ok:hover{background:var(--brand-strong)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.linkbtn{background:none;color:var(--muted);font-size:14px;padding:8px;min-height:40px}
+.linkbtn:hover{color:var(--err)}
+
+/* ---------- thanh gio hang ---------- */
+.cartbar{position:fixed;left:290px;right:0;bottom:0;z-index:40;background:var(--card);
+  border-top:1px solid var(--line)}
+.cartbar .inner{padding:14px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  max-width:1240px}
+.cartsum{margin-right:auto;line-height:1.3}
+.cartsum b{font-size:16px;color:var(--title);font-weight:600}
+.cartsum .sub{font-size:13.5px;color:var(--faint)}
+@media (max-width:1023px){ .cartbar{left:0} .cartbar .inner{padding:12px 16px} }
+
+/* ---------- bang xac nhan ---------- */
+.scrim{position:fixed;inset:0;z-index:80;background:rgba(16,24,40,.5);
+  display:grid;place-items:end center}
+.sheet{background:var(--page);width:100%;max-width:560px;border-radius:var(--r-lg) var(--r-lg) 0 0;
+  max-height:92vh;overflow:auto}
+.sheet-h{position:sticky;top:0;background:var(--page);border-bottom:1px solid var(--line);
+  padding:20px 24px 16px;display:flex;align-items:center;gap:10px}
+.sheet-h h2{margin:0;font-size:19px;font-weight:600;color:var(--title);margin-right:auto}
+.sheet-b{padding:20px 24px 26px;display:grid;gap:16px}
+.rev{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.rev .r{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.rev .r:last-child{border-bottom:0}
+.rev .r .n{flex:1;font-weight:500;color:var(--title)}
+.rev .r .q{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--title)}
+.rev .r .x{width:34px;height:34px;border-radius:var(--r-sm);background:var(--sub);color:var(--faint);font-size:17px}
+.field{display:grid;gap:7px}
+.note{font-size:13.5px;color:var(--faint);line-height:1.5;margin:0}
+select.pick,input.pick{background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:11px 13px;min-height:46px;max-width:100%;color:var(--text)}
+.pick.empty{border-color:var(--brand)}
+
+/* ---------- bang ---------- */
+.tablewrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:700px}
+th{text-align:left;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--faint);background:var(--page);padding:13px 20px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:15px 20px;border-bottom:1px solid var(--line);color:var(--muted);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.strong{color:var(--title);font-weight:500}
+
+/* ---------- the so lieu ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px}
+.stat .ico{width:42px;height:42px;border-radius:10px;background:var(--sub);color:var(--muted);
+  display:grid;place-items:center;margin-bottom:14px}
+.stat b{display:block;font-size:26px;font-weight:600;color:var(--title);line-height:1.15;
+  font-variant-numeric:tabular-nums}
+.stat span{font-size:13.5px;color:var(--faint)}
+.empty{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:44px 22px;text-align:center;color:var(--faint)}
+.empty b{color:var(--title);font-weight:600;display:block;margin-bottom:4px}
+
+/* ---------- dang nhap ---------- */
+.auth{min-height:100vh;display:grid;place-items:center;padding:28px 16px;background:var(--page)}
+.authwrap{width:100%;max-width:420px}
+.authhead{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.authhead .logo{width:44px;height:44px;border-radius:12px;font-size:17px}
+.authhead h1{margin:0;font-size:20px;font-weight:600;color:var(--title);line-height:1.2}
+.authhead p{margin:2px 0 0;font-size:13.5px;color:var(--faint)}
+.authbox{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.authtabs{display:flex;padding:6px;gap:6px;background:var(--page);border-bottom:1px solid var(--line)}
+.authtabs button{flex:1;padding:10px;font-size:14.5px;font-weight:500;color:var(--muted);
+  border-radius:var(--r-sm);min-height:42px}
+.authtabs button[aria-selected="true"]{background:var(--card);color:var(--title);font-weight:600;
+  border:1px solid var(--line)}
+.authform{padding:22px;display:grid;gap:15px}
+.authform label{display:grid;gap:6px}
+.authform input{background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:11px 14px;min-height:46px;width:100%;color:var(--text)}
+.authform input::placeholder{color:var(--faint)}
+.err{background:var(--err-bg);color:var(--err);border-radius:var(--r-sm);padding:11px 14px;font-size:14px}
+.okmsg{background:var(--ok-bg);color:var(--ok);border-radius:var(--r-sm);padding:11px 14px;font-size:14px}
+.hint{font-size:13px;color:var(--faint);line-height:1.5;margin:0}
+
+/* ---------- huy hieu ---------- */
+.role{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;
+  background:var(--sub);color:var(--muted);white-space:nowrap}
+.role.admin{background:var(--brand-soft);color:var(--brand)}
+.role.kho{background:var(--ok-bg);color:var(--ok)}
+
+/* ---------- quan tri ---------- */
+.adminbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.toggle{display:flex;align-items:center;gap:9px;font-size:14.5px;color:var(--text);
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:11px 15px;min-height:46px}
+.toggle input{width:17px;height:17px;accent-color:var(--brand)}
+.mini{font-size:13px;font-weight:500;padding:7px 12px;border-radius:var(--r-sm);
+  border:1px solid var(--line);background:var(--card);color:var(--muted);min-height:36px;white-space:nowrap}
+.mini:hover{background:var(--sub);color:var(--text)}
+.mini.danger{color:var(--err);border-color:var(--err-bg)}
+.mini.danger:hover{background:var(--err-bg)}
+.mini.go{color:var(--brand);border-color:var(--brand-soft)}
+.mini.go:hover{background:var(--brand-soft)}
+tr.locked td{opacity:.55}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.pw{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--faint)}
+
+/* ---------- thong bao ---------- */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:90;
+  background:var(--title);color:var(--page);padding:13px 20px;border-radius:var(--r);
+  font-weight:500;font-size:14.5px;max-width:92vw;
+  box-shadow:0 12px 34px -12px rgba(16,24,40,.5)}
+.toast.bad{background:var(--err);color:#fff}
+.foot{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);
+  font-size:12.5px;color:var(--faint);line-height:1.7}
+@media (max-width:560px){
+  .grid{grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px}
+  .card{padding:14px;min-height:112px}
+  .card .nm{font-size:15px}
+}
+</style>
+
+<div id="root"></div>
+
+<script id="app-state" type="application/json">{"log": [{"id": "Bmtb82vid-MMV1003020", "batch": "Bmtb82vid", "ts": 1787816996869, "person": "NGUYEN THANH VINH", "job": "WO26-0860", "code": "MMV1003020", "name": "Bao tay cao su", "en": "Rubber gloves", "unit": "đôi", "mu": "pair", "qty": 1}], "usersTxt": "", "duyet": false}</script>
+
+<script id="app-script">
+"use strict";
+
+var FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+  + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+  + '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">';
+
+/* ---------- dữ liệu gốc: lấy từ sheet CONSUMABLE MATERIAL + Material của file 08-26.xlsx ---------- */
+var ITEMS = [
+ {c:"MMV1003021",   v:"Bao tay len",            e:"Woollens gloves",       u:"đôi",  s:53, mu:"pair"},
+ {c:"MMV2009008",   v:"Bao tay vải",            e:"Cotton glove",          u:"đôi",  s:51, mu:"pair"},
+ {c:"MMV1003020",   v:"Bao tay cao su",         e:"Rubber gloves",         u:"đôi",  s:240, mu:"pair"},
+ {c:"MMV100090049", v:"Khẩu trang",             e:"Dust mask",             u:"cái",  s:250, mu:"pcs"},
+ {c:"MMV09090057",  v:"Miếng rửa chén",         e:"Cleaning pad green",    u:"cái",  s:35, mu:"pcs"},
+ {c:"MMV-OMO",      v:"Xà bông",                e:"Washing powder 0.8kg",  u:"bịch", s:7, mu:"bag"},
+ {c:"MMV-VIM",      v:"Nước tẩy",               e:"Detergent liquit 1L",   u:"chai", s:32, mu:"btl"},
+ {c:"MMV10120080",  v:"Màng cuốn bè",           e:"Nylon Stretch Film 50cm", u:"cuộn", s:4, mu:"roll"},
+ {c:"MMV1111003",   v:"Giẻ trắng",              e:"White Cleaning Clothes", u:"kg",  s:23, dec:1, mu:"kg"},
+ {c:"MMV10120066",  v:"Giẻ màu",                e:"Cleaning Clothes",      u:"kg",   s:53, dec:1, mu:"kg"},
+ {c:"MMV10040026",  v:"Sơn xịt",                e:"Spray-Paint",           u:"chai", s:8, mu:"pcs"},
+ {c:"MMV10040025",  v:"Keo con chó",            e:'Glue X-66 "Dog"',       u:"lọ",   s:17, mu:"btl"},
+ {c:"MMV09090056",  v:"Giấy nhám mịn",          e:"Sandpaper (fine)",      u:"tờ",   s:35, mu:"pcs"},
+ {c:"MMV09090059",  v:"Giấy nhám thô",          e:"Sandpaper (rough)",     u:"m",    s:0, dec:1, mu:"m"},
+ {c:"MMV1003017",   v:'Cọ quét sơn 2"',         e:'Paint brush 2"',        u:"cái",  s:51, mu:"pcs"},
+ {c:"MMV1003016",   v:'Cọ quét sơn 1"',         e:'Paint brush 1"',        u:"cái",  s:70, mu:"pcs"},
+ {c:"MMV10120082",  v:"Keo ron xuồng",          e:"Sealant for boat",      u:"tuýp", s:42, mu:"tube"},
+ {c:"MMV-SIKA140",  v:"Sikaflex / Silicon",     e:"Sikaflex contruction",  u:"tuýp", s:1, mu:"tuyp"},
+ {c:"MMV09090055",  v:"Tẩy gỉ WD-40 (chai)",    e:"WD-40 rust remover",    u:"chai", s:34, mu:"btl"},
+ {c:"MMV09090055-1",v:"Tẩy gỉ WD-40 (can)",     e:"WD-40 rust remover",    u:"can",  s:0, mu:"can"},
+ {c:"MMV09090060",  v:"Xịt bố thắng",           e:"Brake cleaner spray",   u:"chai", s:11, mu:"btl"},
+ {c:"MMV110912",    v:"Tem bảo dưỡng bình chữa cháy", e:"FE maintenance sticker", u:"cái", s:10188, mu:"pcs"},
+ {c:"MMV10040030",  v:"Bịch nylon",             e:"Nylon bag",             u:"kg",   s:14, dec:1, mu:"kg"},
+ {c:"STAPE09050042",  v:"Băng keo vải 5cm",     e:"Cloth tape 5cm",        u:"cuộn", s:9, mu:"roll"},
+ {c:"STAPE09050042-1",v:"Băng keo vải 10cm",    e:"Cloth tape 10cm",       u:"cuộn", s:10, mu:"roll"},
+ {c:"RTAPE1209003", v:"Bao keo non",            e:"Teflon tape",           u:"cuộn", s:25, mu:"roll"},
+ {c:"MMV1003012",   v:"Băng keo giấy 5cm",      e:"Paper tape 5cm",        u:"cuộn", s:1, mu:"roll"},
+ {c:"MMV10060040",  v:"Băng keo giấy 2.5cm",    e:"Paper tape 2.5cm",      u:"cuộn", s:0, mu:"roll"},
+ {c:"ETAPE09050041",v:"Băng keo điện",          e:"Insulating Tape",       u:"cuộn", s:56, mu:"roll"},
+ {c:"DSTAPE1209003",v:"Băng keo 2 mặt",         e:"Double-side tape",      u:"cuộn", s:1, mu:"roll"},
+ {c:"MMV10050033",  v:"Băng keo trong 5cm",     e:"Clear tape 5cm",        u:"cuộn", s:32, mu:"roll"},
+ {c:"MMV100100052", v:"Băng keo trong 2.5cm",   e:"Clear tape 2cm",        u:"cuộn", s:36, mu:"roll"},
+ {c:"MMV1003011",   v:"Băng keo vàng",          e:"Brown Tape 5cm",        u:"cuộn", s:24, mu:"roll"},
+ /* vật tư cuộn dài – cắt dần theo job */
+ {c:"PF06060002",   v:"Màng nhựa (cuộn 4m)",    e:"Plastic foil (4m)",     u:"m",   s:272, dec:1, roll:1, mu:"m"},
+ {c:"YUL-SP-3-008-1",v:"Băng phản quang",       e:"Retro-reflective tape", u:"mtr", s:464, dec:1, roll:1, mu:"mtr"},
+ {c:"CN-190321",    v:"Băng phản quang China",  e:"Solas Reflective Tape (china 45m/roll)", u:"m", s:731, dec:1, roll:1, mu:"m"}
+];
+
+var JOBS = ["WO26-0988","WO26-0970","WO26-0953","WO26-0948","WO26-0946","WO26-0943","WO26-0938","WO26-0937","WO26-0933","WO26-0931","WO26-0928","WO26-0926","WO26-0904","WO26-0901","WO26-0891","WO26-0874","WO26-0860","WO26-0858","WO26-0850","WO26-0799","WO26-0795","WO26-0794","WO26-0774","WO26-0758","WO26-0624","WO26-0617","WO26-0602","WO26-0572","WO26-0517","WO26-0445","WO26-0424","WO26-0392","WO26-0374","WO26-0339-6","WO26-0338","WO26-0309","WO26-0307","WO26-0261-5","WO26-0235"];
+
+var PEOPLE0 = ["NGUYEN THANH VINH","LE HONG TU","NGUYEN ANH DUC","NGUYEN NGOC MINH","NGUYEN TRUC TAI","PHAM VAN HUY","LE DUY THANG","PHAM THANH DO","LE VAN QUANG","CAO MINH TUAN","PHAM THUONG GIANG","NGUYEN HOANG PHUC","LE TRUONG HAU","DAO NGOC LAM","TRAN VAN THUC"];
+
+/* ---------- tai khoan: luu duoi dang file text users.txt ---------- */
+var USERS_HEAD = "# users.txt - moi dong mot tai khoan\n"
+               + "# tendangnhap|matkhau|hoten|vaitro|trangthai|ngaytao\n"
+               + "# vaitro: admin | kho | ktv     trangthai: active | pending | locked\n";
+
+function acc(hoten){
+  var t = String(hoten||"").toLowerCase().split(/\s+/).filter(Boolean);
+  if(t.length > 1){
+    return t[t.length-1] + t.slice(0,-1).map(function(w){ return w.charAt(0); }).join("");
+  }
+  return t[0] || "user";
+}
+function seedUsers(){
+  var out = USERS_HEAD + "admin|mmv2026|Qu\u1ea3n tr\u1ecb h\u1ec7 th\u1ed1ng|admin|active|2026-08-28\n";
+  PEOPLE0.forEach(function(ten){
+    var a = acc(ten);
+    out += a + "|" + a + "|" + ten + "|ktv|active|2026-08-28\n";
+  });
+  return out;
+}
+function parseUsers(txt){
+  var out = [];
+  String(txt||"").split(/\r?\n/).forEach(function(line){
+    line = line.trim();
+    if(!line || line.charAt(0) === "#") return;
+    var f = line.split("|");
+    if(f.length < 4) return;
+    out.push({u:f[0].trim(), p:f[1], ten:(f[2]||f[0]).trim(),
+              vt:(f[3]||"ktv").trim(), tt:(f[4]||"active").trim(), ngay:(f[5]||"").trim()});
+  });
+  return out;
+}
+function usersToTxt(list){
+  return USERS_HEAD + list.map(function(x){
+    return [x.u, x.p, x.ten, x.vt, x.tt, x.ngay].join("|");
+  }).join("\n") + "\n";
+}
+function findUser(name){
+  var k = String(name||"").trim().toLowerCase();
+  for(var i=0;i<USERS.length;i++) if(USERS[i].u.toLowerCase() === k) return USERS[i];
+  return null;
+}
+function isAdmin(){ return !!(UI.me && UI.me.vt === "admin"); }
+function seesAll(){ return !!(UI.me && (UI.me.vt === "admin" || UI.me.vt === "kho")); }
+function today(){ var d = new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+
+/* ---------- state ---------- */
+var S = {log:[], usersTxt:"", duyet:false};
+try{ S = JSON.parse(document.getElementById('app-state').textContent) || S; }catch(e){}
+if(!S.log) S.log = [];
+if(!S.usersTxt) S.usersTxt = seedUsers();
+if(typeof S.duyet !== "boolean") S.duyet = false;
+var USERS = parseUsers(S.usersTxt);
+
+var UI = {tab:"take", me:null, auth:"login", authErr:"", authOk:"", authU:"", authTen:"",
+          job:"", q:"", filter:"all", cart:{}, sheet:false, toast:null, busy:false, drawer:false};
+try{
+  UI.job = localStorage.getItem('mmv.job') || "";
+  var sess = localStorage.getItem('mmv.session');
+  if(sess){ var m0 = findUser(sess); if(m0 && m0.tt === "active") UI.me = m0; }
+}catch(e){}
+
+var byCode = {};
+ITEMS.forEach(function(i){ byCode[i.c] = i; });
+
+/* ---------- helpers ---------- */
+function useCap(name){
+  try{
+    if(typeof claude === "undefined" || !claude || typeof claude.use !== "function"){
+      return Promise.resolve(null);
+    }
+    return claude.use(name);
+  }catch(e){ return Promise.resolve(null); }
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(m){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]; }); }
+function pad(n){ return n<10?"0"+n:""+n; }
+function dmy(ts){ var d=new Date(ts); return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+String(d.getFullYear()).slice(2); }
+function hm(ts){ var d=new Date(ts); return pad(d.getHours())+":"+pad(d.getMinutes()); }
+function fmt(n){ return (Math.round(n*10)/10).toString(); }
+function issued(code){ var t=0; S.log.forEach(function(r){ if(r.code===code) t+=r.qty; }); return t; }
+function left(it){ return it.s - issued(it.c); }
+
+/* ---------- render ---------- */
+function render(){
+  var r = document.getElementById('root');
+  r.innerHTML = shell();
+  wire();
+}
+
+var ICON = {
+  take:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>',
+  log:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>',
+  admin:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  menu:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>',
+  box:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8l-9-5-9 5v8l9 5 9-5z"/><path d="M3.3 7.3 12 12l8.7-4.7M12 22V12"/></svg>',
+  tag:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 22l-9-9V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.2"/></svg>',
+  user:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+};
+
+var TABTITLE = {take:"Lấy vật tư", log:"Nhật ký", admin:"Quản trị tài khoản"};
+
+function shell(){
+  if(!UI.me) return loginView()
+    + (UI.toast ? '<div class="toast'+(UI.toast.bad?' bad':'')+'">'+esc(UI.toast.msg)+'</div>' : '');
+  var body = UI.tab==="take" ? takeView() : (UI.tab==="admin" ? adminView() : logView());
+  return ''
+  + '<div class="layout">'
+  +   sidebar()
+  +   (UI.drawer ? '<div class="drawerscrim" id="drawerscrim"></div>' : '')
+  +   '<div class="content">'
+  +     topbar()
+  +     '<div class="page">' + body + foot() + '</div>'
+  +   '</div>'
+  + '</div>'
+  + (UI.tab==="take" ? cartBar() : '')
+  + (UI.sheet ? sheet() : '')
+  + (UI.toast ? '<div class="toast'+(UI.toast.bad?' bad':'')+'">'+esc(UI.toast.msg)+'</div>' : '');
+}
+
+function sidebar(){
+  var n = seesAll() ? S.log.length : S.log.filter(function(r){ return r.user === UI.me.u; }).length;
+  var cho = USERS.filter(function(x){ return x.tt === "pending"; }).length;
+  var vtName = UI.me.vt==="admin" ? "Quản trị" : (UI.me.vt==="kho" ? "Nhân viên kho" : "Kỹ thuật viên");
+  function item(key, label, badge){
+    return '<button class="navitem" data-tab="'+key+'"'
+      + (UI.tab===key ? ' aria-current="page"' : '') + '>'
+      + ICON[key] + '<span>'+esc(label)+'</span>'
+      + (badge ? '<span class="n">'+badge+'</span>' : '')
+      + '</button>';
+  }
+  return '<aside class="sidebar'+(UI.drawer?' open':'')+'">'
+    + '<div class="brandrow"><span class="logo">MMV</span>'
+    +   '<span class="brandtxt">Kho vật tư<small>Xưởng LSA / FFE</small></span></div>'
+    + '<div class="navlabel">Công việc</div>'
+    + item("take","Lấy vật tư", 0)
+    + item("log","Nhật ký", n)
+    + (isAdmin() ? '<div class="navlabel">Hệ thống</div>' + item("admin","Tài khoản", cho) : '')
+    + '<div class="sidefoot"><div class="usercard">'
+    +   '<span class="avatar">'+esc(UI.me.ten.trim().charAt(0).toUpperCase())+'</span>'
+    +   '<span style="min-width:0"><span class="uname">'+esc(UI.me.ten)+'</span>'
+    +     '<span class="urole">'+vtName+'</span></span>'
+    + '</div>'
+    + '<button class="linkbtn" id="logout" style="width:100%;text-align:left;padding-left:12px">Đăng xuất</button>'
+    + '</div></aside>';
+}
+
+function topbar(){
+  return '<div class="topbar">'
+    + '<button class="burger" id="burger" aria-label="Mở menu">'+ICON.menu+'</button>'
+    + '<span class="crumb">'+esc(TABTITLE[UI.tab] || "")+'</span>'
+    + '<span class="role '+esc(UI.me.vt)+'">'+esc(UI.me.u)+'</span>'
+    + '</div>';
+}
+
+function loginView(){
+  var reg = UI.auth === "register";
+  return '<div class="auth"><div class="authwrap">'
+   + '<div class="authhead"><span class="logo">MMV</span>'
+   +   '<span><h1>Kho vật tư xưởng</h1><p>Mermaid Maritime Vietnam</p></span></div>'
+   + '<div class="authbox"><div class="authtabs">'
+   +   '<button data-auth="login" aria-selected="'+(!reg)+'">Đăng nhập</button>'
+   +   '<button data-auth="register" aria-selected="'+reg+'">Đăng ký</button>'
+   + '</div><div class="authform">'
+   +   (UI.authErr ? '<div class="err">'+esc(UI.authErr)+'</div>' : '')
+   +   (UI.authOk ? '<div class="okmsg">'+esc(UI.authOk)+'</div>' : '')
+   +   '<label><span class="lbl">Tên đăng nhập</span>'
+   +     '<input id="au" autocapitalize="off" spellcheck="false" placeholder="vd: vinhnt" value="'+esc(UI.authU)+'"></label>'
+   +   (reg ? '<label><span class="lbl">Họ và tên</span><input id="aten" placeholder="NGUYEN VAN A" value="'+esc(UI.authTen)+'"></label>' : '')
+   +   '<label><span class="lbl">Mật khẩu</span><input id="ap" type="password" placeholder="••••••"></label>'
+   +   (reg ? '<label><span class="lbl">Nhập lại mật khẩu</span><input id="ap2" type="password" placeholder="••••••"></label>' : '')
+   +   '<button class="btn primary" id="ago" style="width:100%">'+(reg?"Tạo tài khoản":"Đăng nhập")+'</button>'
+   +   '<p class="hint">Đừng dùng lại mật khẩu email công ty — mật khẩu ở đây lưu dạng chữ thường, không mã hóa.</p>'
+   + '</div></div></div></div>';
+}
+
+function takeView(){
+  var q = UI.q.toLowerCase().trim();
+  var list = ITEMS.filter(function(i){
+    if(UI.filter==="roll" && !i.roll) return false;
+    if(UI.filter==="picked" && !UI.cart[i.c]) return false;
+    if(!q) return true;
+    return (i.v+" "+i.e+" "+i.c).toLowerCase().indexOf(q)>=0;
+  });
+  var cards = list.map(card).join('') || '<div class="empty">Không tìm thấy vật tư nào khớp «'+esc(UI.q)+'»</div>';
+  return ''
+  + '<div class="search"><input id="q" type="search" placeholder="Tìm nhanh: bao tay, băng keo, sơn…" value="'+esc(UI.q)+'"></div>'
+  + '<div class="chipbar">'
+  +   fchip("all","Tất cả ("+ITEMS.length+")")
+  +   fchip("roll","Cuộn cắt dần (3)")
+  +   fchip("picked","Đang chọn ("+Object.keys(UI.cart).length+")")
+  + '</div>'
+  + '<div class="grid">'+cards+'</div>';
+}
+
+function fchip(k,label){
+  return '<button class="fchip" data-filter="'+k+'" aria-pressed="'+(UI.filter===k)+'">'+esc(label)+'</button>';
+}
+
+function card(i){
+  var picked = UI.cart[i.c] != null;
+  var rem = left(i);
+  var cls = rem<=0 ? 'out' : (rem<=5 ? 'low' : '');
+  var qtyRow = picked ? ''
+    + '<div class="qty" data-code="'+esc(i.c)+'">'
+    +   '<button class="qbtn" data-step="-1" aria-label="Bớt">−</button>'
+    +   '<input type="text" inputmode="decimal" value="'+fmt(UI.cart[i.c])+'" data-qty aria-label="Số lượng '+esc(i.v)+'">'
+    +   '<button class="qbtn" data-step="1" aria-label="Thêm">+</button>'
+    +   '<span class="u">'+esc(i.u)+'</span>'
+    + '</div>' : '';
+  return '<div class="card'+(picked?' picked':'')+'">'
+    + (picked?'<span class="tick">✓</span>':'')
+    + '<button class="hit" data-pick="'+esc(i.c)+'" aria-pressed="'+picked+'" aria-label="'+esc(i.v+' — còn '+fmt(rem)+' '+i.u+(picked?', đang chọn':''))+'">'
+    +   '<span class="nm">'+esc(i.v)+'</span>'
+    +   '<span class="meta">'
+    +     (i.roll?'<span class="roll">cắt dần</span>':'')
+    +     '<span class="stock '+cls+'">còn '+fmt(rem)+' '+esc(i.u)+'</span>'
+    +     '<span class="code">'+esc(i.c)+'</span>'
+    +   '</span>'
+    + '</button>'
+    + qtyRow
+    + '</div>';
+}
+
+function cartBar(){
+  var codes = Object.keys(UI.cart);
+  var n = codes.length;
+  var ready = n > 0;
+  var sub = !n ? 'Bấm vào vật tư để chọn'
+    : 'Bấm Tiếp tục để chọn JOB và xác nhận';
+  return '<div class="cartbar"><div class="inner">'
+    + '<div class="cartsum"><b>'+(n?n+' món đang chọn':'Chưa chọn món nào')+'</b><div class="sub">'+esc(sub)+'</div></div>'
+    + (n?'<button class="btn ghost" id="clear">Xóa hết</button>':'')
+    + '<button class="btn primary" id="next"'+(ready?'':' disabled')+'>Tiếp tục</button>'
+    + '</div></div>';
+}
+
+function sheet(){
+  var rows = Object.keys(UI.cart).map(function(c){
+    var i = byCode[c];
+    return '<div class="r"><span class="n">'+esc(i.v)+'</span>'
+      + '<span class="q tnum">'+fmt(UI.cart[c])+' '+esc(i.u)+'</span>'
+      + '<button class="x" data-drop="'+esc(c)+'" aria-label="Bỏ dòng này">×</button></div>';
+  }).join('');
+  var jobopts = ['<option value="">— chọn JOB —</option>'].concat(JOBS.map(function(j){
+    return '<option value="'+esc(j)+'"'+(j===UI.job?' selected':'')+'>'+esc(j)+'</option>'; })).join('');
+  var custom = UI.job && JOBS.indexOf(UI.job)<0 ? UI.job : "";
+  return '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">'
+    + '<div class="sheet-h"><h2>Xác nhận lấy hàng</h2>'
+    +   '<button class="btn ghost" id="close">Đóng</button></div>'
+    + '<div class="sheet-b">'
+    +   '<div class="field"><span class="lbl">Người lấy</span><div><b>'+esc(UI.me.ten)+'</b></div></div>'
+    +   '<div class="field"><span class="lbl">Làm cho JOB nào</span>'
+    +     '<select class="pick'+(UI.job?'':' empty')+'" id="job">'+jobopts+'</select>'
+    +     '<input class="pick" id="jobfree" placeholder="hoặc gõ số WO khác…" value="'+esc(custom)+'">'
+    +   '</div>'
+    +   '<div class="field"><span class="lbl">'+Object.keys(UI.cart).length+' món</span><div class="rev">'+rows+'</div></div>'
+    +   '<button class="btn ok" id="save" style="width:100%"'+(UI.job&&!UI.busy?'':' disabled')+'>'
+    +     (UI.busy?'Đang ghi…':'Xác nhận — ghi vào sổ')+'</button>'
+    +   '<p class="note">Ghi xong không sửa được. Nếu ghi nhầm, báo nhân viên kho để điều chỉnh — mọi thao tác đều lưu lại tên người và giờ bấm.</p>'
+    + '</div></div></div>';
+}
+
+/* ---------- màn hình nhật ký ---------- */
+function logView(){
+  var mine = seesAll() ? S.log : S.log.filter(function(r){ return r.user === UI.me.u; });
+  if(!mine.length){
+    return '<div class="empty"><b>Chưa có dòng nào.</b><br>'
+      + (seesAll() ? 'Khi kỹ thuật viên bấm lấy vật tư, mỗi lượt sẽ hiện ở đây.'
+                   : 'Bạn chưa lấy vật tư nào. Ở đây chỉ hiện các lượt của bạn.')
+      + '</div>';
+  }
+  var log = mine.slice().sort(function(a,b){ return b.ts-a.ts; });
+  var jobs = {}, people = {}, total = 0;
+  log.forEach(function(r){ jobs[r.job]=(jobs[r.job]||0)+1; people[r.person]=1; total++; });
+  var topJobs = Object.keys(jobs).sort(function(a,b){ return jobs[b]-jobs[a]; }).slice(0,3)
+      .map(function(j){ return j+" ("+jobs[j]+")"; }).join(", ");
+  var rows = log.map(function(r){
+    return '<tr>'
+      + '<td class="mono tnum">'+dmy(r.ts)+'<br><span style="color:var(--ink-3)">'+hm(r.ts)+'</span></td>'
+      + '<td class="strong">'+esc(r.name)+'<br><span class="mono" style="font-size:12px;color:var(--ink-3)">'+esc(r.code)+'</span></td>'
+      + '<td class="strong tnum">'+fmt(r.qty)+' '+esc(r.unit)+'</td>'
+      + '<td class="mono">'+esc(r.job)+'</td>'
+      + '<td>'+esc(r.person)+'</td>'
+      + '</tr>';
+  }).join('');
+  return ''
+  + '<div class="stats">'
+  +   '<div class="stat"><span class="ico">'+ICON.log+'</span><b class="tnum">'+total+'</b><span>dòng đã ghi</span></div>'
+  +   '<div class="stat"><span class="ico">'+ICON.tag+'</span><b class="tnum">'+Object.keys(jobs).length+'</b><span>JOB có phát sinh</span></div>'
+  +   '<div class="stat"><span class="ico">'+ICON.user+'</span><b class="tnum">'+Object.keys(people).length+'</b><span>người lấy hàng</span></div>'
+  +   '<div class="stat"><span class="ico">'+ICON.box+'</span><b style="font-size:17px;line-height:1.35">'+esc(topJobs||"—")+'</b><span>JOB nhiều dòng nhất</span></div>'
+  + '</div>'
+  + (seesAll() ? '<div class="toolbar">'
+  +   '<button class="btn ghost" id="csv">Tải file cho sheet Movement</button>'
+  +   '<button class="btn ghost" id="copy">Chép vào clipboard</button>'
+  + '</div>' : '')
+  + '<div class="tablewrap"><table><thead><tr>'
+  +   '<th>Ngày / giờ</th><th>Vật tư</th><th>Số lượng</th><th>JOB</th><th>Người lấy</th>'
+  + '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+/* ---------- man hinh quan tri ---------- */
+function adminView(){
+  var rows = USERS.map(function(x){
+    var vtSel = ['admin','kho','ktv'].map(function(v){
+      return '<option value="'+v+'"'+(x.vt===v?' selected':'')+'>'
+        + (v==="admin"?"Quản trị":v==="kho"?"Nhân viên kho":"Kỹ thuật viên") + '</option>';
+    }).join('');
+    var soDong = S.log.filter(function(r){ return r.user === x.u; }).length;
+    var me = x.u === UI.me.u;
+    return '<tr'+(x.tt==="locked"?' class="locked"':'')+'>'
+      + '<td class="strong">'+esc(x.ten)+(me?' <span class="role">bạn</span>':'')
+      +   '<br><span class="mono" style="font-size:12px;color:var(--ink-3)">'+esc(x.u)+'</span></td>'
+      + '<td class="pw">'+esc(x.p)+'</td>'
+      + '<td><select class="mini" data-vt="'+esc(x.u)+'"'+(me?' disabled':'')+'>'+vtSel+'</select></td>'
+      + '<td>'+(x.tt==="active"?'<span class="role kho">đang dùng</span>'
+              : x.tt==="pending"?'<span class="role admin">chờ duyệt</span>'
+              : '<span class="role">đã khóa</span>')+'</td>'
+      + '<td class="tnum">'+soDong+'</td>'
+      + '<td><div class="acts">'
+      +   (x.tt==="pending" ? '<button class="mini go" data-act="duyet" data-u="'+esc(x.u)+'">Duyệt</button>' : '')
+      +   (x.tt==="active" && !me ? '<button class="mini" data-act="khoa" data-u="'+esc(x.u)+'">Khóa</button>' : '')
+      +   (x.tt==="locked" ? '<button class="mini go" data-act="mo" data-u="'+esc(x.u)+'">Mở lại</button>' : '')
+      +   '<button class="mini" data-act="matkhau" data-u="'+esc(x.u)+'">Đổi mật khẩu</button>'
+      +   (me ? '' : '<button class="mini danger" data-act="xoa" data-u="'+esc(x.u)+'">Xóa</button>')
+      + '</div></td></tr>';
+  }).join('');
+
+  return ''
+  + '<div class="adminbar">'
+  +   '<button class="btn ghost" id="adduser">+ Thêm tài khoản</button>'
+  +   '<label class="toggle"><input type="checkbox" id="duyet"'+(S.duyet?' checked':'')+'>'
+  +     'Tài khoản đăng ký mới phải chờ duyệt</label>'
+  +   '<button class="btn ghost" id="dltxt">Tải users.txt</button>'
+  + '</div>'
+  + '<div class="tablewrap"><table><thead><tr>'
+  +   '<th>Họ tên / tài khoản</th><th>Mật khẩu</th><th>Vai trò</th><th>Trạng thái</th>'
+  +   '<th>Số dòng</th><th>Thao tác</th>'
+  + '</tr></thead><tbody>'+rows+'</tbody></table></div>'
+  + '<p class="hint" style="margin-top:14px">Mật khẩu lưu dạng chữ thường trong users.txt, '
+  + 'ai mở được app cũng đọc được. Đây là bản dùng thử — bản chính thức trên SharePoint sẽ dùng '
+  + 'tài khoản công ty và không lưu mật khẩu ở đây.</p>';
+}
+
+/* luu danh sach tai khoan (xuat ban phien ban moi) */
+function saveUsers(list, thongBao, duyet){
+  var next = {log:S.log, usersTxt:usersToTxt(list),
+              duyet:(typeof duyet === "boolean" ? duyet : S.duyet)};
+  UI.busy = true;
+  useCap("artifact").then(function(a){
+    if(!a) throw {code:"not_granted"};
+    return a.publish(buildDoc(next));
+  }).then(function(){
+    try{ if(thongBao) sessionStorage.setItem('mmv.msg', thongBao); }catch(e){}
+  }).catch(function(err){
+    UI.busy = false;
+    var code = (err && err.code) || "upstream_error";
+    if(code === "conflict"){
+      UI.toast = {msg:"Có người vừa ghi cùng lúc — màn hình đang tải lại, làm lại giúp em.", bad:true};
+    }else if(code === "not_granted" || code === "not_writer" || code === "capability_disabled"){
+      S.usersTxt = next.usersTxt; S.duyet = next.duyet; USERS = parseUsers(S.usersTxt);
+      UI.toast = {msg:"Đã lưu tạm trên máy này (chưa lên máy chủ).", bad:true};
+    }else{
+      UI.toast = {msg:"Chưa lưu được, thử lại lần nữa.", bad:true};
+    }
+    render(); fadeToast();
+  });
+  render();
+}
+
+function foot(){
+  return '<div class="foot">'
+    + 'Số tồn hiển thị lấy từ bản 08-26.xlsx trong thư mục MMV AI Transformation (26/08), '
+    + 'chưa khớp với file kho đang chạy ở Warehouse/01 Inventory — số thật thấp hơn. Cần nạp lại trước khi dùng số này để quyết định.<br>'
+    + 'Danh mục 36 mã lấy từ sheet CONSUMABLE MATERIAL và Material. Bản dùng thử để KTV bấm và IT lấy làm mẫu.'
+    + '</div>';
+}
+
+/* ---------- CSV đúng cấu trúc sheet Movement ---------- */
+function toCSV(){
+  var head = ["ITEMS","SRV","SIV","DATE","CODE","DESCRIPTION","UNIT","RECEIPT","ISSUE","JOB CODE","VESSEL","REMAKS"];
+  var lines = [head.join(",")];
+  var src = seesAll() ? S.log : S.log.filter(function(r){ return r.user === UI.me.u; });
+  src.slice().sort(function(a,b){ return a.ts-b.ts; }).forEach(function(r){
+    var row = ["","","",dmy(r.ts),r.code,r.en||r.name,r.mu||r.unit,"",fmt(r.qty),r.job,"","App xuong - "+r.person];
+    lines.push(row.map(function(x){
+      x = String(x==null?"":x);
+      return /[",\n]/.test(x) ? '"'+x.replace(/"/g,'""')+'"' : x;
+    }).join(","));
+  });
+  return "﻿" + lines.join("\r\n");
+}
+
+/* ---------- tự xuất bản phiên bản mới ---------- */
+function buildDoc(state){
+  var css = document.getElementById('app-style').textContent;
+  var js  = document.getElementById('app-script').textContent;
+  var data = JSON.stringify(state).replace(/</g,"\\u003c");
+  return '<!doctype html>\n<html lang="vi">\n<head>\n<meta charset="utf-8">\n'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+    + '<title>Lấy vật tư xưởng MMV</title>\n' + FONTS + '\n'
+    + '<style id="app-style">' + css + '<\/style>\n</head>\n<body>\n'
+    + '<div id="root"></div>\n'
+    + '<script id="app-state" type="application/json">' + data + '<\/script>\n'
+    + '<script id="app-script">' + js + '<\/script>\n</body>\n</html>';
+}
+
+function saveBatch(){
+  if(UI.busy) return;
+  var codes = Object.keys(UI.cart);
+  if(!codes.length || !UI.me || !UI.job) return;
+  var batch = "B" + Date.now().toString(36);
+  var now = Date.now();
+  var rows = codes.map(function(c){
+    var i = byCode[c];
+    return {id:batch+"-"+c, batch:batch, ts:now, user:UI.me.u, person:UI.me.ten, job:UI.job,
+            code:c, name:i.v, en:i.e, unit:i.u, mu:(i.mu||i.u), qty:UI.cart[c]};
+  });
+  var next = {log:S.log.concat(rows), usersTxt:S.usersTxt, duyet:S.duyet};
+  UI.busy = true; render();
+
+  try{ sessionStorage.setItem('mmv.pending', JSON.stringify(rows)); }catch(e){}
+  try{ localStorage.setItem('mmv.job', UI.job); }catch(e){}
+
+  useCap("artifact").then(function(a){
+    if(!a) throw {code:"not_granted"};
+    return a.publish(buildDoc(next));
+  }).then(function(){
+    try{ sessionStorage.setItem('mmv.saved', String(rows.length)); }catch(e){}
+    /* trang sẽ tự tải lại sang phiên bản mới */
+  }).catch(function(err){
+    UI.busy = false;
+    var code = (err && err.code) || "upstream_error";
+    if(code==="conflict"){
+      UI.toast = {msg:"Có người vừa ghi cùng lúc — màn hình đang tải lại, bấm lại giúp em.", bad:true};
+    }else if(code==="not_granted" || code==="not_writer" || code==="capability_disabled"){
+      /* không ghi lên máy chủ được: giữ tạm trên máy này */
+      S.log = next.log;
+      try{ localStorage.setItem('mmv.offline', JSON.stringify(S.log)); }catch(e){}
+      UI.cart = {}; UI.sheet = false;
+      UI.toast = {msg:"Đã ghi tạm trên máy này (chưa lên máy chủ). Báo nhân viên kho xuất file.", bad:true};
+    }else{
+      UI.toast = {msg:"Chưa ghi được, thử lại lần nữa.", bad:true};
+    }
+    render(); fadeToast();
+  });
+}
+
+function fadeToast(){ setTimeout(function(){ if(UI.toast){ UI.toast=null; render(); } }, 4200); }
+
+/* ---------- dang nhap / dang ky ---------- */
+function doAuth(){
+  var g = function(id){ var e = document.getElementById(id); return e ? e.value : ""; };
+  var u = g('au').trim(), mk = g('ap');
+  UI.authU = u; UI.authErr = ""; UI.authOk = "";
+
+  if(UI.auth === "register"){
+    var ten = g('aten').trim(), mk2 = g('ap2');
+    UI.authTen = ten;
+    if(u.length < 3){ UI.authErr = "Tên đăng nhập phải từ 3 ký tự."; return render(); }
+    if(/\s/.test(u) || u.indexOf("|") >= 0){ UI.authErr = "Tên đăng nhập không được có dấu cách hoặc ký tự |"; return render(); }
+    if(!ten){ UI.authErr = "Chưa nhập họ và tên."; return render(); }
+    if(ten.indexOf("|") >= 0){ UI.authErr = "Họ tên không được có ký tự |"; return render(); }
+    if(mk.length < 4){ UI.authErr = "Mật khẩu phải từ 4 ký tự."; return render(); }
+    if(mk !== mk2){ UI.authErr = "Hai lần nhập mật khẩu không giống nhau."; return render(); }
+    if(findUser(u)){ UI.authErr = "Tên đăng nhập này đã có người dùng."; return render(); }
+    var tt = S.duyet ? "pending" : "active";
+    var list = USERS.concat([{u:u, p:mk, ten:ten, vt:"ktv", tt:tt, ngay:today()}]);
+    if(tt === "active"){ try{ localStorage.setItem('mmv.session', u); }catch(e){} }
+    saveUsers(list, tt === "active" ? ("Chào " + ten + ", tài khoản đã tạo xong.")
+                                    : "Đã gửi đăng ký. Chờ quản trị duyệt rồi đăng nhập lại.");
+    return;
+  }
+
+  var x = findUser(u);
+  if(!x || x.p !== mk){ UI.authErr = "Sai tên đăng nhập hoặc mật khẩu."; return render(); }
+  if(x.tt === "pending"){ UI.authErr = "Tài khoản đang chờ quản trị duyệt."; return render(); }
+  if(x.tt === "locked"){ UI.authErr = "Tài khoản đã bị khóa. Liên hệ quản trị."; return render(); }
+  try{ localStorage.setItem('mmv.session', x.u); }catch(e){}
+  UI.me = x; UI.tab = "take"; UI.authErr = ""; UI.authU = "";
+  render();
+}
+
+/* ---------- sự kiện ---------- */
+function wire(){
+  var root = document.getElementById('root');
+
+  root.querySelectorAll('[data-tab]').forEach(function(b){
+    b.onclick = function(){ UI.tab = b.dataset.tab; UI.drawer = false; render(); };
+  });
+  var bg = document.getElementById('burger');
+  if(bg) bg.onclick = function(){ UI.drawer = !UI.drawer; render(); };
+  var ds = document.getElementById('drawerscrim');
+  if(ds) ds.onclick = function(){ UI.drawer = false; render(); };
+  root.querySelectorAll('[data-filter]').forEach(function(b){
+    b.onclick = function(){ UI.filter = b.dataset.filter; render(); };
+  });
+
+  /* --- dang nhap / dang ky --- */
+  document.querySelectorAll('[data-auth]').forEach(function(b){
+    b.onclick = function(){
+      var au = document.getElementById('au');
+      UI.authU = au ? au.value : "";
+      UI.auth = b.dataset.auth; UI.authErr = ""; UI.authOk = "";
+      render();
+    };
+  });
+  var ago = document.getElementById('ago');
+  if(ago) ago.onclick = doAuth;
+  ['au','aten','ap','ap2'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.onkeydown = function(ev){ if(ev.key === "Enter") doAuth(); };
+  });
+  var lo = document.getElementById('logout');
+  if(lo) lo.onclick = function(){
+    try{ localStorage.removeItem('mmv.session'); }catch(e){}
+    UI.me = null; UI.cart = {}; UI.tab = "take"; UI.auth = "login";
+    UI.authU = ""; UI.authErr = ""; UI.authOk = "";
+    render();
+  };
+
+  /* --- quan tri --- */
+  var au2 = document.getElementById('adduser');
+  if(au2) au2.onclick = function(){
+    var ten = prompt("Họ và tên:");
+    if(!ten || !ten.trim()) return;
+    var u = prompt("Tên đăng nhập:", acc(ten));
+    if(!u || !u.trim()) return;
+    u = u.trim();
+    if(u.indexOf("|") >= 0 || /\s/.test(u)){ alert("Tên đăng nhập không được có dấu cách hoặc ký tự |"); return; }
+    if(findUser(u)){ alert("Tên đăng nhập này đã có người dùng."); return; }
+    var mk = prompt("Mật khẩu:", "123456");
+    if(!mk) return;
+    var list = USERS.concat([{u:u, p:mk, ten:ten.trim(), vt:"ktv", tt:"active", ngay:today()}]);
+    saveUsers(list, "Đã thêm tài khoản " + u);
+  };
+  var dz = document.getElementById('duyet');
+  if(dz) dz.onchange = function(){ saveUsers(USERS, "", dz.checked); };
+  var dl = document.getElementById('dltxt');
+  if(dl) dl.onclick = function(){
+    useCap("downloads").then(function(d){
+      if(!d) throw {code:"unavailable"};
+      return d.save({filename:"users.txt", data:S.usersTxt});
+    }).then(function(){
+      UI.toast = {msg:"Đã tải users.txt"}; render(); fadeToast();
+    }).catch(function(e){
+      if(e && e.code === "declined") return;
+      UI.toast = {msg:"Không tải được file.", bad:true}; render(); fadeToast();
+    });
+  };
+  document.querySelectorAll('[data-vt]').forEach(function(sel){
+    sel.onchange = function(){
+      var list = USERS.map(function(x){
+        return x.u === sel.dataset.vt ? {u:x.u,p:x.p,ten:x.ten,vt:sel.value,tt:x.tt,ngay:x.ngay} : x; });
+      saveUsers(list, "Đã đổi vai trò " + sel.dataset.vt);
+    };
+  });
+  document.querySelectorAll('[data-act]').forEach(function(b){
+    b.onclick = function(){
+      var u = b.dataset.u, act = b.dataset.act, x = findUser(u);
+      if(!x) return;
+      var list;
+      if(act === "xoa"){
+        if(!confirm("Xóa tài khoản " + u + "? Các dòng đã ghi vẫn giữ nguyên.")) return;
+        list = USERS.filter(function(y){ return y.u !== u; });
+        saveUsers(list, "Đã xóa tài khoản " + u);
+        return;
+      }
+      if(act === "matkhau"){
+        var mk = prompt("Mật khẩu mới cho " + u + ":");
+        if(!mk) return;
+        list = USERS.map(function(y){
+          return y.u === u ? {u:y.u,p:mk,ten:y.ten,vt:y.vt,tt:y.tt,ngay:y.ngay} : y; });
+        saveUsers(list, "Đã đổi mật khẩu " + u);
+        return;
+      }
+      var tt = act === "khoa" ? "locked" : "active";
+      list = USERS.map(function(y){
+        return y.u === u ? {u:y.u,p:y.p,ten:y.ten,vt:y.vt,tt:tt,ngay:y.ngay} : y; });
+      saveUsers(list, act === "khoa" ? ("Đã khóa " + u) : ("Đã mở lại " + u));
+    };
+  });
+
+  var q = document.getElementById('q');
+  if(q) q.oninput = function(){
+    UI.q = q.value;
+    var pos = q.selectionStart;
+    render();
+    var q2 = document.getElementById('q');
+    if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(e){} }
+  };
+
+  root.querySelectorAll('[data-pick]').forEach(function(b){
+    b.onclick = function(){
+      var c = b.dataset.pick;
+      if(UI.cart[c] != null) delete UI.cart[c]; else UI.cart[c] = 1;
+      render();
+    };
+  });
+  root.querySelectorAll('.qty').forEach(function(row){
+    var c = row.dataset.code, it = byCode[c], step = it.dec ? 0.5 : 1;
+    row.querySelectorAll('[data-step]').forEach(function(b){
+      b.onclick = function(ev){
+        ev.stopPropagation();
+        var n = UI.cart[c] + step*Number(b.dataset.step);
+        UI.cart[c] = Math.max(step, Math.round(n*10)/10);
+        render();
+      };
+    });
+    var inp = row.querySelector('[data-qty]');
+    inp.onclick = function(ev){ ev.stopPropagation(); };
+    inp.onchange = function(){
+      var n = parseFloat(String(inp.value).replace(",","."));
+      UI.cart[c] = (isNaN(n)||n<=0) ? step : Math.round(n*10)/10;
+      render();
+    };
+  });
+
+  var cl = document.getElementById('clear');
+  if(cl) cl.onclick = function(){ UI.cart = {}; render(); };
+  var nx = document.getElementById('next');
+  if(nx) nx.onclick = function(){ UI.sheet = true; render(); };
+
+  var close = document.getElementById('close');
+  if(close) close.onclick = function(){ UI.sheet = false; render(); };
+  var scrim = document.getElementById('scrim');
+  if(scrim) scrim.onclick = function(ev){ if(ev.target === scrim){ UI.sheet = false; render(); } };
+  var job = document.getElementById('job');
+  if(job) job.onchange = function(){ UI.job = job.value; render(); };
+  var jf = document.getElementById('jobfree');
+  if(jf) jf.onchange = function(){ UI.job = jf.value.trim().toUpperCase(); render(); };
+  document.querySelectorAll('[data-drop]').forEach(function(b){
+    b.onclick = function(){
+      delete UI.cart[b.dataset.drop];
+      if(!Object.keys(UI.cart).length) UI.sheet = false;
+      render();
+    };
+  });
+  var sv = document.getElementById('save');
+  if(sv) sv.onclick = saveBatch;
+
+  var csv = document.getElementById('csv');
+  if(csv) csv.onclick = function(){
+    var name = "movement-app-xuong-" + new Date().toISOString().slice(0,10);
+    useCap("downloads").then(function(d){
+      if(!d) throw {code:"unavailable"};
+      return d.save({filename:name+".csv", data:toCSV()}).catch(function(e){
+        if(e && e.code==="extension_not_enabled") return d.save({filename:name+".txt", data:toCSV()});
+        throw e;
+      });
+    }).then(function(){
+      UI.toast = {msg:"Đã tải file. Mở bằng Excel rồi dán vào sheet Movement."}; render(); fadeToast();
+    }).catch(function(e){
+      if(e && e.code==="declined") return;
+      UI.toast = {msg:"Không tải được file — dùng nút Chép vào clipboard.", bad:true}; render(); fadeToast();
+    });
+  };
+  var cp = document.getElementById('copy');
+  if(cp) cp.onclick = function(){
+    var txt = toCSV().replace(/^﻿/,"").split("\r\n").map(function(l){
+      return l.split(",").join("\t"); }).join("\n");
+    navigator.clipboard.writeText(txt).then(function(){
+      UI.toast = {msg:"Đã chép. Dán thẳng vào sheet Movement."}; render(); fadeToast();
+    }).catch(function(){
+      UI.toast = {msg:"Trình duyệt không cho chép — dùng nút tải file.", bad:true}; render(); fadeToast();
+    });
+  };
+}
+
+/* ---------- khởi động ---------- */
+(function boot(){
+  /* gộp phần ghi tạm khi máy chủ không nhận */
+  try{
+    var off = JSON.parse(localStorage.getItem('mmv.offline') || "[]");
+    if(off.length){
+      var have = {}; S.log.forEach(function(r){ have[r.id]=1; });
+      var add = off.filter(function(r){ return !have[r.id]; });
+      if(add.length) S.log = S.log.concat(add);
+      else localStorage.removeItem('mmv.offline');
+    }
+  }catch(e){}
+
+  render();
+
+  try{
+    var msg = sessionStorage.getItem('mmv.msg');
+    if(msg){
+      sessionStorage.removeItem('mmv.msg');
+      UI.toast = {msg:msg}; render(); fadeToast();
+    }
+    var n = sessionStorage.getItem('mmv.saved');
+    if(n){
+      sessionStorage.removeItem('mmv.saved');
+      sessionStorage.removeItem('mmv.pending');
+      try{ localStorage.removeItem('mmv.offline'); }catch(e){}
+      UI.toast = {msg:"Đã ghi xong " + n + " món. Cảm ơn!"};
+      render(); fadeToast();
+    }
+  }catch(e){}
+})();
+</script>
