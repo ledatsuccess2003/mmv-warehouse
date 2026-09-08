@@ -11,9 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { toISODate } from '@/lib/format'
 
-interface Row extends VoucherItemInput {
-  _name?: string
-}
+type Row = VoucherItemInput
 
 export default function VoucherNew({ type }: { type: VoucherType }) {
   const isOut = type === 'OUT'
@@ -47,11 +45,9 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
 
   function onCodeChange(i: number, code: string) {
     const mat = matMap.get(code)
-    setRow(i, {
-      material_code: code,
-      _name: mat?.description_vi ?? '',
-      unit: mat?.unit ?? '',
-    })
+    // Chỉ tự điền gợi ý khi khớp danh mục có sẵn; nếu không có thì để trống
+    // cho nhân viên tự gõ tay tên hàng + ĐVT (không bắt buộc phải có trong danh mục).
+    setRow(i, mat ? { material_code: code, description: mat.description_vi, unit: mat.unit } : { material_code: code })
   }
 
   function onJobChange(code: string) {
@@ -69,9 +65,10 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
 
   function validItems(): VoucherItemInput[] {
     return rows
-      .filter((r) => r.material_code && matMap.has(r.material_code))
+      .filter((r) => r.material_code.trim() || (r.description ?? '').trim())
       .map((r) => ({
-        material_code: r.material_code,
+        material_code: r.material_code.trim(),
+        description: r.description ?? matMap.get(r.material_code)?.description_vi ?? '',
         qty_theory: isOut ? Number(r.qty_theory) || 0 : Number(r.qty_actual) || 0,
         qty_actual: Number(r.qty_actual) || (isOut ? 0 : Number(r.qty_theory) || 0),
         unit: r.unit ?? matMap.get(r.material_code)?.unit ?? '',
@@ -174,7 +171,6 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
 
       <div className="space-y-3">
         {rows.map((r, i) => {
-          const mat = matMap.get(r.material_code)
           return (
             <div key={i} className="rounded-xl border border-border bg-card p-3">
               <div className="grid gap-2 sm:grid-cols-12">
@@ -184,16 +180,24 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
                     list="mat-list"
                     value={r.material_code}
                     onChange={(e) => onCodeChange(i, e.target.value)}
-                    placeholder="Mã..."
+                    placeholder="Nhập mã (tự do)..."
                   />
                 </div>
                 <div className="sm:col-span-3">
                   <Label className="text-sm">Tên hàng</Label>
-                  <Input value={mat?.description_vi ?? ''} disabled placeholder="tự hiện" />
+                  <Input
+                    value={r.description ?? ''}
+                    onChange={(e) => setRow(i, { description: e.target.value })}
+                    placeholder="Nhập tên hàng..."
+                  />
                 </div>
                 <div className="sm:col-span-1">
                   <Label className="text-sm">ĐVT</Label>
-                  <Input value={mat?.unit ?? ''} disabled />
+                  <Input
+                    value={r.unit ?? ''}
+                    onChange={(e) => setRow(i, { unit: e.target.value })}
+                    placeholder="ĐVT"
+                  />
                 </div>
                 {isOut ? (
                   <>

@@ -70,6 +70,7 @@ export interface VoucherItem {
   id: number
   voucher_id: number
   material_code: string | null
+  description: string | null
   qty_theory: number | null
   qty_actual: number | null
   unit: string | null
@@ -121,6 +122,7 @@ export interface ApiResult<T = unknown> {
 // ---- Payload tạo phiếu ----
 export interface VoucherItemInput {
   material_code: string
+  description?: string | null
   qty_theory?: number | null
   qty_actual?: number | null
   unit?: string | null

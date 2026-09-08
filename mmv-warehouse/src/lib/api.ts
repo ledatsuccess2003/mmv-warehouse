@@ -305,6 +305,7 @@ export async function createVoucher(
         id: mock.nextVoucherItemId++,
         voucher_id: voucher.id,
         material_code: item.material_code,
+        description: item.description ?? null,
         qty_theory: item.qty_theory ?? null,
         qty_actual: item.qty_actual ?? null,
         unit: item.unit ?? null,
@@ -338,6 +339,7 @@ export async function createVoucher(
     const rows = (data.items || []).map((it) => ({
       voucher_id: voucher.id,
       material_code: it.material_code,
+      description: it.description ?? null,
       qty_theory: it.qty_theory ?? null,
       qty_actual: it.qty_actual ?? null,
       unit: it.unit ?? null,
@@ -387,11 +389,27 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
     voucher.status = 'confirmed'
     const items = mock.voucherItems.filter((i: any) => i.voucher_id === voucherId)
     items.forEach((item: any) => {
-      const mat = mock.getMaterial(item.material_code)
-      if (!mat) return
       const qty = Number(item.qty_actual) || Number(item.qty_theory) || 0
-      if (voucher.type === 'OUT') mat.closing_qty -= qty
-      else mat.closing_qty += qty
+      if (qty <= 0) return
+      const mat = mock.getMaterial(item.material_code)
+      if (mat) {
+        if (voucher.type === 'OUT') mat.closing_qty -= qty
+        else mat.closing_qty += qty
+      }
+      mock.movements.push({
+        id: mock.nextMovId++,
+        source_type: 'voucher',
+        source_id: voucher.id,
+        date: voucher.date,
+        code: item.material_code ?? '',
+        description: mat?.description_vi ?? mat?.description ?? item.description ?? '',
+        unit: item.unit ?? mat?.unit ?? null,
+        receipt: voucher.type === 'IN' ? qty : 0,
+        issue: voucher.type === 'OUT' ? qty : 0,
+        job_code: voucher.job_code,
+        vessel: voucher.vessel,
+        created_at: new Date().toISOString(),
+      })
     })
     return ok(voucher)
   }
@@ -424,7 +442,7 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
         source_id: voucher.id,
         date: voucher.date,
         code: it.material_code,
-        description: mat?.description || mat?.description_vi || null,
+        description: mat?.description || mat?.description_vi || it.description || null,
         unit: it.unit || mat?.unit || null,
         receipt: isIn ? qty : 0,
         issue: isIn ? 0 : qty,

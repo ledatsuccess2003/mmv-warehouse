@@ -91,10 +91,13 @@ create table vouchers (
 -- ---------------------------------------------------------------------
 -- 6. voucher_items - dòng hàng của phiếu
 -- ---------------------------------------------------------------------
+-- material_code KHONG rang buoc khoa ngoai: cho phep nhap tay ma/ten
+-- hang tuy y (khong bat buoc co san trong danh muc materials)
 create table voucher_items (
   id            serial primary key,
   voucher_id    int references vouchers(id) on delete cascade,
-  material_code text references materials(code),
+  material_code text,
+  description   text,
   qty_theory    numeric,
   qty_actual    numeric,
   unit          text,

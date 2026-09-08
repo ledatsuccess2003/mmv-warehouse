@@ -57,7 +57,7 @@ export function VoucherPrint({ voucher, items }: { voucher: Voucher; items: Item
               <td className="border border-gray-400 px-2 py-1 text-center">{i + 1}</td>
               <td className="border border-gray-400 px-2 py-1">{it.material_code}</td>
               <td className="border border-gray-400 px-2 py-1">
-                {it.material?.description ?? it.material?.description_vi ?? ''}
+                {it.material?.description ?? it.material?.description_vi ?? it.description ?? ''}
               </td>
               <td className="border border-gray-400 px-2 py-1 text-center">{it.unit ?? it.material?.unit}</td>
               <td className="border border-gray-400 px-2 py-1 text-right">

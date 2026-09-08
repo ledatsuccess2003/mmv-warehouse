@@ -245,7 +245,7 @@ export function buildVoucherWorkbook(
     aoa.push([
       i + 1,
       it.material_code ?? '',
-      it.material?.description ?? it.material?.description_vi ?? '',
+      it.material?.description ?? it.material?.description_vi ?? it.description ?? '',
       it.unit ?? it.material?.unit ?? '',
       qty,
       it.remarks ?? '',
