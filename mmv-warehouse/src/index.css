@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 215 45% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 45% 15%;
+    --primary: 210 59% 30%; /* navy #1F4E79 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 215 45% 20%;
+    --muted: 210 40% 94%;
+    --muted-foreground: 215 20% 45%;
+    --accent: 210 40% 92%;
+    --accent-foreground: 215 45% 20%;
+    --border: 214 32% 88%;
+    --input: 214 32% 85%;
+    --ring: 210 59% 40%;
+  }
+
+  .dark {
+    --background: 215 40% 10%;
+    --foreground: 210 40% 96%;
+    --card: 215 38% 14%;
+    --card-foreground: 210 40% 96%;
+    --primary: 210 60% 55%;
+    --primary-foreground: 215 45% 12%;
+    --secondary: 215 30% 20%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 215 30% 20%;
+    --muted-foreground: 210 20% 65%;
+    --accent: 215 30% 22%;
+    --accent-foreground: 210 40% 96%;
+    --border: 215 30% 24%;
+    --input: 215 30% 26%;
+    --ring: 210 60% 55%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-size: 18px;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  /* Vùng bấm to hơn cho ngón tay dính dầu mỡ */
+  button,
+  [role='button'],
+  input,
+  select {
+    touch-action: manipulation;
+  }
+}
+
+/* ---------- CSS in phiếu A4 ---------- */
+@media print {
+  body {
+    background: white;
+    font-size: 12pt;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-area {
+    display: block !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+}
+
+/* Ẩn khu vực in khi xem trên màn hình (chỉ hiện khi window.print) */
+.print-only {
+  display: none;
+}
+@media print {
+  .print-only {
+    display: block;
+  }
+}
