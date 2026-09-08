@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Scissors } from 'lucide-react'
+import { CheckCircle2, Scissors, Pencil, List } from 'lucide-react'
 import { getActiveRolls, getJobs, logRollCut } from '@/lib/api'
 import { useAuth } from '@/store/useAuth'
 import { toast } from '@/store/useToast'
@@ -23,6 +23,7 @@ export default function Roll() {
   const [rollId, setRollId] = useState('')
   const [length, setLength] = useState<number>(0)
   const [job, setJob] = useState(localStorage.getItem('mmv.job') || '')
+  const [manualJob, setManualJob] = useState(false)
   const [saving, setSaving] = useState(false)
 
   async function load() {
@@ -121,15 +122,34 @@ export default function Roll() {
           </div>
 
           <div>
-            <Label>Chọn JOB *</Label>
-            <Select value={job} onChange={(e) => setJob(e.target.value)} className="text-lg">
-              <option value="">-- Chọn JOB --</option>
-              {jobs.map((j) => (
-                <option key={j.id} value={j.job_code}>
-                  {j.job_code} {j.vessel ? `· ${j.vessel}` : ''}
-                </option>
-              ))}
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label>Số JOB *</Label>
+              <button
+                type="button"
+                onClick={() => { setManualJob((v) => !v); setJob('') }}
+                className="flex items-center gap-1 text-sm font-semibold text-navy hover:underline"
+              >
+                {manualJob ? <List className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                {manualJob ? 'Chọn từ danh sách' : 'Nhập tay số JOB'}
+              </button>
+            </div>
+            {manualJob ? (
+              <Input
+                value={job}
+                onChange={(e) => setJob(e.target.value)}
+                placeholder="Nhập số JOB, VD: WO26-0900..."
+                className="text-lg"
+              />
+            ) : (
+              <Select value={job} onChange={(e) => setJob(e.target.value)} className="text-lg">
+                <option value="">-- Chọn JOB --</option>
+                {jobs.map((j) => (
+                  <option key={j.id} value={j.job_code}>
+                    {j.job_code} {j.vessel ? `· ${j.vessel}` : ''}
+                  </option>
+                ))}
+              </Select>
+            )}
           </div>
 
           <Button
