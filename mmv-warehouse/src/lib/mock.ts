@@ -75,11 +75,9 @@ export const USERS: User[] = [
   // === Workshop: 2 thanh vien moi ===
   { id: _uid++, name: 'Le Quoc Khiem',          role: 'ktv', pin: '', active: true },
   { id: _uid++, name: 'Le Minh Hieu',           role: 'ktv', pin: '', active: true },
-  // === Engineering ===
+  // === Engineering (Pham Van Huy va Le Van Quang da co o Workshop, khong lap lai) ===
   { id: _uid++, name: 'Pham Tu',                role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Pham Huy',               role: 'ktv', pin: '', active: true },
   { id: _uid++, name: 'Pham Do',                role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Le Quang',               role: 'ktv', pin: '', active: true },
   // === Customs & Logistic / Procurement ===
   { id: _uid++, name: 'Tran Quyen',             role: 'warehouse', pin: '', active: true },
   { id: _uid++, name: 'Dao Dung',               role: 'warehouse', pin: '', active: true },

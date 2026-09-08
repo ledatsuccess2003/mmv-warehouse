@@ -79,11 +79,9 @@ insert into users (name, role, pin, active) values
 -- Workshop: 2 thành viên mới
 ('Le Quoc Khiem',         'ktv', '', true),
 ('Le Minh Hieu',          'ktv', '', true),
--- Engineering
+-- Engineering (Pham Van Huy va Le Van Quang da co o Workshop, khong lap lai)
 ('Pham Tu',               'ktv', '', true),
-('Pham Huy',              'ktv', '', true),
 ('Pham Do',               'ktv', '', true),
-('Le Quang',              'ktv', '', true),
 -- Customs & Logistic / Procurement / Warehouse
 ('Tran Quyen',            'warehouse', '', true),
 ('Dao Dung',              'warehouse', '', true),
