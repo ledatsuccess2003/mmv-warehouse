@@ -134,18 +134,10 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
         <div>
           <Label>Job No.</Label>
           <Input
-            list="job-list"
             value={jobCode}
             onChange={(e) => onJobChange(e.target.value)}
-            placeholder="WO26-..."
+            placeholder="Nhập số JOB, VD: WO26-0900..."
           />
-          <datalist id="job-list">
-            {jobs.map((j) => (
-              <option key={j.id} value={j.job_code}>
-                {j.vessel}
-              </option>
-            ))}
-          </datalist>
         </div>
         {isOut ? (
           <div>
