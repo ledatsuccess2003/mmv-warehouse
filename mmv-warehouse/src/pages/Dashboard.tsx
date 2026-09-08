@@ -5,15 +5,15 @@ import {
 } from 'recharts'
 import {
   getDashboardStats, getTopIssued, getWeeklyTrend, getExpiryAlerts,
-  getStockAlerts, getTodayLogs, getUsers,
+  getStockAlerts, getMovements,
 } from '@/lib/api'
 import { toast } from '@/store/useToast'
 import { useAuth } from '@/store/useAuth'
-import type { Material, User, ConsumableLog } from '@/lib/types'
+import type { Material, Movement } from '@/lib/types'
 import { PageHeader } from '@/components/PageHeader'
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
 import { LoadingScreen } from '@/components/ui/spinner'
-import { fmtQty, fmtDate, fmtTime, fmtMoney } from '@/lib/format'
+import { fmtQty, fmtDate, fmtTime, fmtMoney, toISODate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Package, AlertTriangle, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react'
 
@@ -21,7 +21,6 @@ type Stats = { totalMaterials: number; lowStock: number; issueThisMonth: number;
 type TopRow = { code: string; description: string; total: number }
 type WeekRow = { week: string; issue: number; receipt: number }
 type ExpiryRow = Material & { months_left: number }
-type LogRow = ConsumableLog & { material?: Material }
 
 export default function Dashboard() {
   const user = useAuth((s) => s.user)!
@@ -30,35 +29,29 @@ export default function Dashboard() {
   const [trend, setTrend] = useState<WeekRow[]>([])
   const [expiry, setExpiry] = useState<ExpiryRow[]>([])
   const [lowStock, setLowStock] = useState<Material[]>([])
-  const [recentLogs, setRecentLogs] = useState<LogRow[]>([])
-  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [recentActivity, setRecentActivity] = useState<Movement[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const today = toISODate()
     Promise.all([
       getDashboardStats(),
       getTopIssued(10),
       getWeeklyTrend(),
       getExpiryAlerts(18),
       getStockAlerts(),
-      getUsers(),
-    ]).then(async ([s, t, w, e, l, u]) => {
+      getMovements({ start: today, end: today }),
+    ]).then(([s, t, w, e, l, mv]) => {
       if (s.success && s.data) setStats(s.data)
       if (t.success && t.data) setTop(t.data)
       if (w.success && w.data) setTrend(w.data)
       if (e.success && e.data) setExpiry(e.data)
       if (l.success && l.data) setLowStock(l.data.slice(0, 10))
-      if (u.success && u.data) {
-        setAllUsers(u.data)
-        const ktvs = u.data.filter(x => x.role === 'ktv')
-        const allLogs: LogRow[] = []
-        for (const ktv of ktvs.slice(0, 10)) {
-          const r = await getTodayLogs(ktv.id)
-          if (r.success && r.data) {
-            allLogs.push(...r.data.map(log => ({ ...log, _userName: ktv.name } as any)))
-          }
-        }
-        setRecentLogs(allLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 15))
+      if (mv.success && mv.data) {
+        // Hoạt động của TẤT CẢ mọi người trong ngày, mới nhất trước
+        setRecentActivity(
+          [...mv.data].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 20)
+        )
       }
       if (!s.success) toast.error(s.error ?? 'Không tải được dashboard')
       setLoading(false)
@@ -167,33 +160,34 @@ export default function Dashboard() {
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <Clock className="h-5 w-5 text-navy" />
-            <h3 className="text-lg font-bold text-navy">HOẠT ĐỘNG XUẤT KHO GẦN NHẤT</h3>
+            <h3 className="text-lg font-bold text-navy">HOẠT ĐỘNG XUẤT/NHẬP HÔM NAY (TẤT CẢ MỌI NGƯỜI)</h3>
           </div>
           <div className="overflow-x-auto">
             <Table className="text-sm">
               <THead>
                 <TR>
-                  <TH>Nhân viên</TH>
+                  <TH>Người thực hiện</TH>
                   <TH>Vật tư</TH>
                   <TH className="text-right">SL</TH>
+                  <TH>JOB</TH>
                   <TH>Giờ</TH>
                 </TR>
               </THead>
               <TBody>
-                {recentLogs.length === 0 && (
-                  <TR><TD colSpan={4} className="py-6 text-center text-muted-foreground">Hôm nay chưa có hoạt động</TD></TR>
+                {recentActivity.length === 0 && (
+                  <TR><TD colSpan={5} className="py-6 text-center text-muted-foreground">Hôm nay chưa có hoạt động</TD></TR>
                 )}
-                {recentLogs.map((l) => {
-                  const userName = (l as any)._userName ?? allUsers.find(u => u.id === l.user_id)?.name ?? '?'
-                  return (
-                    <TR key={l.id}>
-                      <TD className="font-semibold">{userName}</TD>
-                      <TD>{l.material?.description_vi ?? l.material_code}</TD>
-                      <TD className="text-right font-bold text-danger">{fmtQty(l.qty)}</TD>
-                      <TD className="whitespace-nowrap text-muted-foreground">{fmtTime(l.timestamp)}</TD>
-                    </TR>
-                  )
-                })}
+                {recentActivity.map((m) => (
+                  <TR key={m.id}>
+                    <TD className="font-semibold text-navy">{m.user_name ?? '?'}</TD>
+                    <TD>{m.description ?? m.code}</TD>
+                    <TD className={cn('text-right font-bold', m.issue ? 'text-danger' : 'text-confirm-dark')}>
+                      {m.issue ? `-${fmtQty(m.issue)}` : `+${fmtQty(m.receipt)}`}
+                    </TD>
+                    <TD className="whitespace-nowrap">{m.job_code}</TD>
+                    <TD className="whitespace-nowrap text-muted-foreground">{fmtTime(m.created_at)}</TD>
+                  </TR>
+                ))}
               </TBody>
             </Table>
           </div>

@@ -52,7 +52,7 @@ export default function Roll() {
       return
     }
     setSaving(true)
-    const res = await logRollCut(roll.roll_id, user.id, job, length)
+    const res = await logRollCut(roll.roll_id, user.id, job, length, user.name)
     setSaving(false)
     if (!res.success) {
       toast.error(res.error ?? 'Ghi thất bại')

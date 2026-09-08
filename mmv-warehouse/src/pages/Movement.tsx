@@ -85,6 +85,7 @@ export default function Movement() {
                 <TH className="text-right">ISSUE</TH>
                 <TH>JOB CODE</TH>
                 <TH>VESSEL</TH>
+                <TH>NGƯỜI THỰC HIỆN</TH>
               </TR>
             </THead>
             <TBody>
@@ -105,12 +106,13 @@ export default function Movement() {
                     <TD className="text-right text-danger">{m.issue ? fmtQty(m.issue) : ''}</TD>
                     <TD className="whitespace-nowrap">{m.job_code}</TD>
                     <TD>{m.vessel}</TD>
+                    <TD className="whitespace-nowrap font-semibold text-navy">{m.user_name}</TD>
                   </TR>
                 )
               })}
               {rows.length === 0 && (
                 <TR>
-                  <TD colSpan={9} className="py-8 text-center text-muted-foreground">
+                  <TD colSpan={10} className="py-8 text-center text-muted-foreground">
                     Không có dữ liệu trong khoảng này
                   </TD>
                 </TR>

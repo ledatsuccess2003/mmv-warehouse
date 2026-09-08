@@ -4,7 +4,7 @@
 // =====================================================================
 import { supabase, isSupabaseConfigured } from './supabase'
 import { toISODate, monthsUntil, monthRange } from './format'
-import { store as mock } from './mock'
+import { store as mock, USERS } from './mock'
 import type {
   ApiResult,
   Material,
@@ -136,7 +136,8 @@ export async function logConsumable(
   materialCode: string,
   qty: number,
   jobCode: string,
-  notes?: string
+  notes?: string,
+  userName?: string
 ): Promise<ApiResult<{ log: ConsumableLog; closing_qty: number }>> {
   if (!isSupabaseConfigured) {
     if (!qty || qty <= 0) return fail('Số lượng phải lớn hơn 0')
@@ -191,6 +192,8 @@ export async function logConsumable(
       issue: qty,
       job_code: jobCode,
       vessel: null,
+      user_id: userId,
+      user_name: userName ?? null,
     })
     if (movErr) throw movErr
 
@@ -408,6 +411,8 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
         issue: voucher.type === 'OUT' ? qty : 0,
         job_code: voucher.job_code,
         vessel: voucher.vessel,
+        user_id: voucher.created_by,
+        user_name: USERS.find(u => u.id === voucher.created_by)?.name ?? voucher.receiver ?? null,
         created_at: new Date().toISOString(),
       })
     })
@@ -416,11 +421,12 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
   try {
     const { data: voucher, error: vErr } = await supabase
       .from('vouchers')
-      .select('*')
+      .select('*, creator:users(name)')
       .eq('id', voucherId)
       .single()
     if (vErr) throw vErr
     if (voucher.status === 'confirmed') throw new Error('Phiếu đã được duyệt trước đó')
+    const creatorName = (voucher as any).creator?.name ?? voucher.receiver ?? null
 
     const { data: items, error: iErr } = await supabase
       .from('voucher_items')
@@ -448,6 +454,8 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
         issue: isIn ? 0 : qty,
         job_code: voucher.job_code,
         vessel: voucher.vessel,
+        user_id: voucher.created_by,
+        user_name: creatorName,
       })
 
       // cập nhật tồn kho
@@ -672,7 +680,8 @@ export async function logRollCut(
   rollId: string,
   userId: number,
   jobCode: string,
-  lengthUsed: number
+  lengthUsed: number,
+  userName?: string
 ): Promise<ApiResult<{ remaining: number; finished: boolean }>> {
   if (!isSupabaseConfigured) {
     if (!lengthUsed || lengthUsed <= 0) return fail('Số mét cắt phải lớn hơn 0')
@@ -683,6 +692,27 @@ export async function logRollCut(
     const finished = remaining <= 0
     if (finished) roll.status = 'finished'
     mock.rollCuts.push({ id: mock.nextRollCutId++, roll_id: rollId, user_id: userId, job_code: jobCode, length_used: lengthUsed, timestamp: new Date().toISOString() })
+
+    const mat = roll.material_code ? mock.getMaterial(roll.material_code) : undefined
+    if (mat) {
+      mat.closing_qty = Number(mat.closing_qty) - lengthUsed
+      mock.movements.push({
+        id: mock.nextMovId++,
+        source_type: 'roll',
+        source_id: roll.id,
+        date: toISODate(),
+        code: roll.material_code,
+        description: mat.description_vi ?? mat.description,
+        unit: mat.unit,
+        receipt: 0,
+        issue: lengthUsed,
+        job_code: jobCode,
+        vessel: null,
+        user_id: userId,
+        user_name: userName ?? USERS.find(u => u.id === userId)?.name ?? null,
+        created_at: new Date().toISOString(),
+      })
+    }
     return ok({ remaining: Math.max(0, remaining), finished })
   }
   try {
@@ -736,6 +766,8 @@ export async function logRollCut(
           issue: lengthUsed,
           job_code: jobCode,
           vessel: null,
+          user_id: userId,
+          user_name: userName ?? null,
         })
       }
     }

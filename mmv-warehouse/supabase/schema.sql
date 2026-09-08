@@ -119,6 +119,8 @@ create table movements (
   issue       numeric default 0,
   job_code    text,
   vessel      text,
+  user_id     int references users(id),
+  user_name   text,   -- luu ten luc ghi nhan, de bao cao khong doi khi doi ten sau nay
   created_at  timestamptz default now()
 );
 

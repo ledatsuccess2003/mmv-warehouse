@@ -53,7 +53,7 @@ export default function Pick() {
   async function confirm() {
     if (!selected || !job) return
     setSaving(true)
-    const res = await logConsumable(user.id, selected.code, qty, job)
+    const res = await logConsumable(user.id, selected.code, qty, job, undefined, user.name)
     setSaving(false)
     if (!res.success) {
       toast.error(res.error ?? 'Ghi thất bại')

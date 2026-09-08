@@ -89,6 +89,8 @@ export interface Movement {
   issue: number
   job_code: string | null
   vessel: string | null
+  user_id: number | null
+  user_name: string | null
   created_at: string
 }
 

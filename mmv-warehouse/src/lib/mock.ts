@@ -163,6 +163,8 @@ export const store = {
         issue: qty,
         job_code: jobCode,
         vessel: null,
+        user_id: userId,
+        user_name: USERS.find(u => u.id === userId)?.name ?? null,
         created_at: new Date().toISOString(),
       })
     }

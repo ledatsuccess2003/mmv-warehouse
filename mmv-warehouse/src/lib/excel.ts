@@ -158,6 +158,7 @@ export function buildMovementWorkbook(
     'JOB CODE',
     'VESSEL',
     'REMAKS',
+    'NGUOI THUC HIEN',
   ]) // row4 headers
 
   // STT khởi lại từ 1 mỗi phiếu (group theo source_type+source_id)
@@ -184,12 +185,13 @@ export function buildMovementWorkbook(
       m.job_code ?? '',
       m.vessel ?? '',
       '',
+      m.user_name ?? '',
     ])
   })
 
   const ws = XLSX.utils.aoa_to_sheet(aoa)
-  ws['!cols'] = colWidths([9, 11, 14, 10, 17, 51, 7, 13, 12, 14, 23, 26])
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }]
+  ws['!cols'] = colWidths([9, 11, 14, 10, 17, 51, 7, 13, 12, 14, 23, 26, 22])
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }]
 
   st(ws, 'A1', { font: { bold: true, sz: 14, color: { rgb: NAVY } } })
   st(ws, 'H3', { font: { bold: true, color: { rgb: NAVY } }, alignment: { horizontal: 'right' } })
@@ -201,10 +203,10 @@ export function buildMovementWorkbook(
     alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
     border: borderAll,
   }
-  for (let c = 0; c < 12; c++) st(ws, XLSX.utils.encode_cell({ r: 3, c }), headStyle)
+  for (let c = 0; c < 13; c++) st(ws, XLSX.utils.encode_cell({ r: 3, c }), headStyle)
 
   for (let r = 4; r < aoa.length; r++) {
-    for (let c = 0; c < 12; c++) {
+    for (let c = 0; c < 13; c++) {
       const addr = XLSX.utils.encode_cell({ r, c })
       const align = c === 7 || c === 8 ? 'right' : c === 0 ? 'center' : 'left'
       st(ws, addr, { border: borderAll, alignment: { horizontal: align, vertical: 'center' } })
