@@ -8,7 +8,7 @@ import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { LoadingScreen } from '@/components/ui/spinner'
-import { fmtDateShort, fmtQty, lastNDays } from '@/lib/format'
+import { fmtDateShort, fmtDateTime, fmtQty, lastNDays } from '@/lib/format'
 
 export default function Movement() {
   const def = lastNDays(30)
@@ -86,6 +86,7 @@ export default function Movement() {
                 <TH>JOB CODE</TH>
                 <TH>VESSEL</TH>
                 <TH>NGƯỜI THỰC HIỆN</TH>
+                <TH>THỜI ĐIỂM GHI NHẬN</TH>
               </TR>
             </THead>
             <TBody>
@@ -107,12 +108,13 @@ export default function Movement() {
                     <TD className="whitespace-nowrap">{m.job_code}</TD>
                     <TD>{m.vessel}</TD>
                     <TD className="whitespace-nowrap font-semibold text-navy">{m.user_name}</TD>
+                    <TD className="whitespace-nowrap text-muted-foreground">{fmtDateTime(m.created_at)}</TD>
                   </TR>
                 )
               })}
               {rows.length === 0 && (
                 <TR>
-                  <TD colSpan={10} className="py-8 text-center text-muted-foreground">
+                  <TD colSpan={11} className="py-8 text-center text-muted-foreground">
                     Không có dữ liệu trong khoảng này
                   </TD>
                 </TR>

@@ -13,7 +13,7 @@ import type { Material, Movement } from '@/lib/types'
 import { PageHeader } from '@/components/PageHeader'
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
 import { LoadingScreen } from '@/components/ui/spinner'
-import { fmtQty, fmtDate, fmtTime, fmtMoney, toISODate } from '@/lib/format'
+import { fmtQty, fmtDate, fmtDateTime, fmtMoney, toISODate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Package, AlertTriangle, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react'
 
@@ -170,7 +170,7 @@ export default function Dashboard() {
                   <TH>Vật tư</TH>
                   <TH className="text-right">SL</TH>
                   <TH>JOB</TH>
-                  <TH>Giờ</TH>
+                  <TH>Thời điểm ghi nhận</TH>
                 </TR>
               </THead>
               <TBody>
@@ -185,7 +185,7 @@ export default function Dashboard() {
                       {m.issue ? `-${fmtQty(m.issue)}` : `+${fmtQty(m.receipt)}`}
                     </TD>
                     <TD className="whitespace-nowrap">{m.job_code}</TD>
-                    <TD className="whitespace-nowrap text-muted-foreground">{fmtTime(m.created_at)}</TD>
+                    <TD className="whitespace-nowrap text-muted-foreground">{fmtDateTime(m.created_at)}</TD>
                   </TR>
                 ))}
               </TBody>

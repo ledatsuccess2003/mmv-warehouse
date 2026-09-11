@@ -137,13 +137,14 @@ export async function logConsumable(
   qty: number,
   jobCode: string,
   notes?: string,
-  userName?: string
+  userName?: string,
+  occurredAt?: string
 ): Promise<ApiResult<{ log: ConsumableLog; closing_qty: number }>> {
   if (!isSupabaseConfigured) {
     if (!qty || qty <= 0) return fail('Số lượng phải lớn hơn 0')
     const mat = mock.getMaterial(materialCode)
     if (!mat) return fail('Không tìm thấy mã vật tư ' + materialCode)
-    const log = mock.addLog(userId, materialCode, qty, jobCode, notes)
+    const log = mock.addLog(userId, materialCode, qty, jobCode, notes, occurredAt)
     const warning = mat.closing_qty < 0 ? `TỒN ÂM: ${mat.description_vi} còn ${mat.closing_qty} ${mat.unit}` : undefined
     return ok({ log, closing_qty: mat.closing_qty }, warning)
   }
@@ -159,15 +160,17 @@ export async function logConsumable(
     if (!mat) throw new Error('Không tìm thấy mã vật tư ' + materialCode)
 
     // 1) ghi nhật ký
+    const logPayload = {
+      user_id: userId,
+      material_code: materialCode,
+      qty,
+      job_code: jobCode,
+      notes: notes ?? null,
+      ...(occurredAt ? { timestamp: occurredAt } : {}),
+    }
     const { data: log, error: logErr } = await supabase
       .from('consumable_logs')
-      .insert({
-        user_id: userId,
-        material_code: materialCode,
-        qty,
-        job_code: jobCode,
-        notes: notes ?? null,
-      })
+      .insert(logPayload)
       .select()
       .single()
     if (logErr) throw logErr
@@ -194,6 +197,7 @@ export async function logConsumable(
       vessel: null,
       user_id: userId,
       user_name: userName ?? null,
+      ...(occurredAt ? { created_at: occurredAt } : {}),
     })
     if (movErr) throw movErr
 
@@ -212,14 +216,15 @@ export async function logManualConsumable(
   unit: string,
   qty: number,
   jobCode: string,
-  userName?: string
+  userName?: string,
+  occurredAt?: string
 ): Promise<ApiResult<{ log: ConsumableLog; closing_qty: number }>> {
   const cleanName = description.trim()
   const cleanUnit = unit.trim()
   if (!cleanName) return fail('Hãy nhập tên vật tư')
   if (!cleanUnit) return fail('Hãy nhập đơn vị tính')
 
-  const code = `CHUA-CO-${Date.now().toString().slice(-8)}`
+  const code = `CHUA-CO-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.toUpperCase()
   const material: Omit<Material, 'id' | 'created_at'> = {
     code,
     description: cleanName,
@@ -240,13 +245,13 @@ export async function logManualConsumable(
       id: Math.max(0, ...mock.materials.map((m) => m.id)) + 1,
       created_at: new Date().toISOString(),
     })
-    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName)
+    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName, occurredAt)
   }
 
   try {
     const { error } = await supabase.from('materials').insert(material)
     if (error) throw error
-    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName)
+    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName, occurredAt)
   } catch (e) {
     return fail(e)
   }

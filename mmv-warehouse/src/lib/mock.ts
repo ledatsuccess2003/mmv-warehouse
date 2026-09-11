@@ -135,14 +135,14 @@ export const store = {
     return this.materials.find(m => m.code === code)
   },
 
-  addLog(userId: number, materialCode: string, qty: number, jobCode: string, notes?: string): ConsumableLog {
+  addLog(userId: number, materialCode: string, qty: number, jobCode: string, notes?: string, timestamp?: string): ConsumableLog {
     const log: ConsumableLog = {
       id: this.nextLogId++,
       user_id: userId,
       material_code: materialCode,
       qty,
       job_code: jobCode,
-      timestamp: new Date().toISOString(),
+      timestamp: timestamp ?? new Date().toISOString(),
       notes: notes ?? null,
     }
     this.logs.push(log)
@@ -165,7 +165,7 @@ export const store = {
         vessel: null,
         user_id: userId,
         user_name: USERS.find(u => u.id === userId)?.name ?? null,
-        created_at: new Date().toISOString(),
+        created_at: timestamp ?? new Date().toISOString(),
       })
     }
     return log

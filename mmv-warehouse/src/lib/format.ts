@@ -33,6 +33,14 @@ export function fmtTime(input: string | Date | null | undefined): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
+/** HH:mm:ss · dd/MM/yyyy */
+export function fmtDateTime(input: string | Date | null | undefined): string {
+  if (!input) return ''
+  const d = typeof input === 'string' ? new Date(input) : input
+  if (isNaN(d.getTime())) return ''
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())} · ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`
+}
+
 /** Số gọn: bỏ .0 thừa */
 export function fmtQty(n: number | null | undefined): string {
   if (n == null) return '0'
