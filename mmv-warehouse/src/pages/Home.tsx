@@ -30,7 +30,8 @@ export default function Home() {
   if (isAdmin) {
     return (
       <div>
-        <div className="mb-6">
+        <div className="mb-6 rounded-3xl border border-white/70 bg-white/70 p-5 shadow-sm backdrop-blur sm:p-6">
+          <p className="mb-1 text-sm font-bold uppercase tracking-[0.12em] text-navy-light">MMV Warehouse</p>
           <h1 className="text-2xl font-extrabold text-navy">Xin chào, {user.name} 👋</h1>
           <p className="text-lg text-muted-foreground">Quản trị hệ thống kho vật tư</p>
         </div>
@@ -40,7 +41,7 @@ export default function Home() {
             <Link
               key={a.to}
               to={a.to}
-              className="flex items-center gap-4 rounded-2xl border-2 border-border bg-card p-5 shadow-sm transition-all hover:border-navy hover:shadow-md active:scale-[0.98]"
+              className="flex items-center gap-4 rounded-2xl border border-border bg-card/90 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-navy hover:shadow-md active:scale-[0.98]"
             >
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-muted ${a.color}`}>
                 <a.icon className="h-6 w-6" />
@@ -55,7 +56,8 @@ export default function Home() {
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="mb-6 rounded-3xl border border-white/70 bg-white/70 p-5 shadow-sm backdrop-blur sm:p-6">
+        <p className="mb-1 text-sm font-bold uppercase tracking-[0.12em] text-navy-light">MMV Warehouse</p>
         <h1 className="text-2xl font-extrabold text-navy">Xin chào, {user.name} 👋</h1>
         <p className="text-lg text-muted-foreground">Chọn việc cần làm</p>
       </div>
@@ -65,10 +67,11 @@ export default function Home() {
           <Link
             key={b.to}
             to={b.to}
-            className={`flex min-h-[160px] flex-col items-center justify-center gap-3 rounded-2xl ${b.color} p-6 text-white shadow-lg transition-transform active:scale-95`}
+            className={`group relative flex min-h-[160px] overflow-hidden flex-col items-center justify-center gap-3 rounded-3xl ${b.color} p-6 text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl active:scale-95`}
           >
-            <span className="text-5xl">{b.emoji}</span>
-            <span className="text-xl font-extrabold tracking-wide">{b.label}</span>
+            <span className="absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/10 transition-transform group-hover:scale-125" />
+            <span className="relative text-5xl">{b.emoji}</span>
+            <span className="relative text-xl font-extrabold tracking-wide">{b.label}</span>
           </Link>
         ))}
       </div>
@@ -81,7 +84,7 @@ export default function Home() {
               <Link
                 key={s.to}
                 to={s.to}
-                className="flex items-center gap-3 rounded-xl border-2 border-border bg-card p-4 font-bold text-navy hover:border-navy"
+                className="flex items-center gap-3 rounded-2xl border border-border bg-card/90 p-4 font-bold text-navy shadow-sm transition-all hover:-translate-y-0.5 hover:border-navy hover:shadow-md"
               >
                 <s.icon className="h-7 w-7" />
                 {s.label}

@@ -45,13 +45,16 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    background: hsl(var(--background));
   }
 
   body {
     @apply bg-background text-foreground font-sans;
+    background-image: radial-gradient(circle at top right, rgb(143 205 233 / 18%), transparent 34rem);
     font-size: 18px;
     margin: 0;
     -webkit-font-smoothing: antialiased;
+    min-width: 320px;
   }
 
   h1 {
@@ -65,6 +68,44 @@
   select {
     touch-action: manipulation;
   }
+}
+
+.install-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(15 42 66 / 55%);
+  backdrop-filter: blur(4px);
+}
+
+.install-prompt__card {
+  width: min(100%, 480px);
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #fff 0%, #eef8fc 100%);
+  padding: 22px;
+  box-shadow: 0 24px 70px rgb(4 32 56 / 35%);
+  animation: fade-in 0.25s ease-out;
+}
+
+.install-prompt__icon {
+  display: flex;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  color: white;
+  background: linear-gradient(135deg, #1f4e79, #2c6aa0);
+}
+
+@media (min-width: 768px) {
+  body { background-image: radial-gradient(circle at 8% 2%, rgb(143 205 233 / 19%), transparent 28rem), radial-gradient(circle at 90% 22%, rgb(31 78 121 / 9%), transparent 25rem); }
 }
 
 /* ---------- CSS in phiếu A4 ---------- */

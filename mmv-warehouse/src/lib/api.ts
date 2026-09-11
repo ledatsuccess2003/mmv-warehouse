@@ -204,6 +204,54 @@ export async function logConsumable(
   }
 }
 
+/** Ghi vật tư chưa có trong danh mục. Vật tư được tạo với tồn đầu 0 để kho
+ *  có thể bổ sung mã và cập nhật tồn thực tế sau đó. */
+export async function logManualConsumable(
+  userId: number,
+  description: string,
+  unit: string,
+  qty: number,
+  jobCode: string,
+  userName?: string
+): Promise<ApiResult<{ log: ConsumableLog; closing_qty: number }>> {
+  const cleanName = description.trim()
+  const cleanUnit = unit.trim()
+  if (!cleanName) return fail('Hãy nhập tên vật tư')
+  if (!cleanUnit) return fail('Hãy nhập đơn vị tính')
+
+  const code = `CHUA-CO-${Date.now().toString().slice(-8)}`
+  const material: Omit<Material, 'id' | 'created_at'> = {
+    code,
+    description: cleanName,
+    description_vi: cleanName,
+    unit: cleanUnit,
+    category: 'consumable',
+    min_stock: 0,
+    closing_qty: 0,
+    lead_time_days: 0,
+    has_expiry: false,
+    expiry_date: null,
+    unit_price: 0,
+  }
+
+  if (!isSupabaseConfigured) {
+    mock.materials.push({
+      ...material,
+      id: Math.max(0, ...mock.materials.map((m) => m.id)) + 1,
+      created_at: new Date().toISOString(),
+    })
+    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName)
+  }
+
+  try {
+    const { error } = await supabase.from('materials').insert(material)
+    if (error) throw error
+    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName)
+  } catch (e) {
+    return fail(e)
+  }
+}
+
 /** Nhật ký hôm nay của 1 KTV (kèm tên hàng) */
 export async function getTodayLogs(userId: number): Promise<ApiResult<(ConsumableLog & { material?: Material })[]>> {
   if (!isSupabaseConfigured) {

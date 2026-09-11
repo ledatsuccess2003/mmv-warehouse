@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, Package, Minus, Plus, CheckCircle2, Pencil, List } from 'lucide-react'
-import { getConsumableMaterials, getJobs, logConsumable } from '@/lib/api'
+import { Search, Package, Minus, Plus, CheckCircle2, Pencil, List, PenLine, ClipboardPlus } from 'lucide-react'
+import { getConsumableMaterials, getJobs, logConsumable, logManualConsumable } from '@/lib/api'
 import { useAuth } from '@/store/useAuth'
 import { toast } from '@/store/useToast'
 import type { Job, Material } from '@/lib/types'
@@ -20,6 +20,9 @@ export default function Pick() {
   const [q, setQ] = useState('')
 
   const [selected, setSelected] = useState<Material | null>(null)
+  const [manualMaterial, setManualMaterial] = useState(false)
+  const [manualName, setManualName] = useState('')
+  const [manualUnit, setManualUnit] = useState('cái')
   const [qty, setQty] = useState(1)
   const [job, setJob] = useState(localStorage.getItem('mmv.job') || '')
   const [manualJob, setManualJob] = useState(false)
@@ -47,13 +50,22 @@ export default function Pick() {
 
   function choose(m: Material) {
     setSelected(m)
+    setManualMaterial(false)
+    setQty(1)
+  }
+
+  function chooseManual() {
+    setSelected(null)
+    setManualMaterial(true)
     setQty(1)
   }
 
   async function confirm() {
-    if (!selected || !job) return
+    if ((!selected && !manualMaterial) || !job) return
     setSaving(true)
-    const res = await logConsumable(user.id, selected.code, qty, job, undefined, user.name)
+    const res = manualMaterial
+      ? await logManualConsumable(user.id, manualName, manualUnit, qty, job, user.name)
+      : await logConsumable(user.id, selected!.code, qty, job, undefined, user.name)
     setSaving(false)
     if (!res.success) {
       toast.error(res.error ?? 'Ghi thất bại')
@@ -65,6 +77,8 @@ export default function Pick() {
     setTimeout(() => {
       setDone(false)
       setSelected(null)
+      setManualMaterial(false)
+      setManualName('')
       setQty(1)
     }, 2000)
   }
@@ -72,7 +86,7 @@ export default function Pick() {
   if (loading) return <LoadingScreen />
 
   // Bước 2/3: đã chọn hàng
-  if (selected) {
+  if (selected || manualMaterial) {
     return (
       <div>
         <PageHeader title="Lấy vật tư" subtitle="Bước 2: Nhập số lượng & chọn JOB" back={() => setSelected(null)} />
@@ -86,15 +100,24 @@ export default function Pick() {
           <div className="mx-auto max-w-lg space-y-6">
             {/* Tên hàng */}
             <div className="rounded-2xl border-2 border-navy bg-navy/5 p-5 text-center">
-              <div className="text-2xl font-extrabold text-navy">{selected.description_vi}</div>
-              <div className="text-base text-muted-foreground">
-                {selected.code} · còn {fmtQty(selected.closing_qty)} {selected.unit}
-              </div>
+              {manualMaterial ? (
+                <div className="space-y-3 text-left">
+                  <div className="flex items-center justify-center gap-2 text-navy"><PenLine className="h-5 w-5" /><span className="text-xl font-extrabold">Nhập tay vật tư chưa có</span></div>
+                  <Input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Tên vật tư, ví dụ: Bu lông M10" className="bg-white text-lg" autoFocus />
+                  <Input value={manualUnit} onChange={(e) => setManualUnit(e.target.value)} placeholder="Đơn vị: cái, kg, chai..." className="bg-white text-lg" />
+                  <p className="text-center text-sm text-muted-foreground">Vật tư sẽ được tạo với mã tạm để kho bổ sung thông tin sau.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-extrabold text-navy">{selected!.description_vi}</div>
+                  <div className="text-base text-muted-foreground">{selected!.code} · còn {fmtQty(selected!.closing_qty)} {selected!.unit}</div>
+                </>
+              )}
             </div>
 
             {/* Số lượng */}
             <div>
-              <Label>Số lượng ({selected.unit})</Label>
+              <Label>Số lượng ({manualMaterial ? manualUnit || 'đơn vị' : selected!.unit})</Label>
               <div className="flex items-center gap-3">
                 <Button variant="outline" size="icon" className="h-14 w-14" onClick={() => setQty((n) => Math.max(1, n - 1))}>
                   <Minus className="h-7 w-7" />
@@ -151,7 +174,7 @@ export default function Pick() {
               variant="confirm"
               size="xl"
               className="w-full"
-              disabled={!job || saving || qty <= 0}
+              disabled={!job || saving || qty <= 0 || (manualMaterial && (!manualName.trim() || !manualUnit.trim()))}
               onClick={confirm}
             >
               <CheckCircle2 className="h-7 w-7" />
@@ -179,6 +202,14 @@ export default function Pick() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <button
+          onClick={chooseManual}
+          className="flex min-h-[110px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-navy bg-navy/5 p-3 text-center transition-all active:scale-95 hover:bg-navy/10"
+        >
+          <ClipboardPlus className="h-8 w-8 text-navy" />
+          <span className="text-base font-bold leading-tight text-navy">Nhập tay vật tư chưa có</span>
+          <span className="text-sm text-muted-foreground">Tạo mã tạm</span>
+        </button>
         {filtered.map((m) => (
           <button
             key={m.id}

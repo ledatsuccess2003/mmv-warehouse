@@ -15,9 +15,11 @@ import Dashboard from './pages/Dashboard'
 import CostByJob from './pages/CostByJob'
 import ReportWeekly from './pages/ReportWeekly'
 import ReportUser from './pages/ReportUser'
+import { InstallAppPrompt } from './components/InstallAppPrompt'
 
 export default function App() {
   return (
+    <>
     <Routes>
       <Route path="/login" element={<Login />} />
 
@@ -72,5 +74,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
+    <InstallAppPrompt />
+    </>
   )
 }
