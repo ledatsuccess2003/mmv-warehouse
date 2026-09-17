@@ -472,3 +472,66 @@ end;
 $$;
 
 grant execute on function log_consumable(int, text, numeric, text, text, text, timestamptz) to anon, authenticated;
+
+-- =====================================================================
+--  RPC: log_manual_consumable - ghi vật tư CHƯA có trong danh mục
+--
+--  Bản cũ ở client làm hai bước rời nhau: insert materials, rồi gọi
+--  tiếp logConsumable. Không có transaction bao ngoài, nên nếu bước hai
+--  hỏng (ví dụ qty <= 0, vốn chỉ được kiểm BÊN TRONG logConsumable,
+--  tức là SAU khi mã đã được tạo) thì mã CHUA-CO-... nằm lại trong
+--  danh mục vĩnh viễn, tồn 0, không gắn với nhật ký nào.
+--
+--  Hàm này gọi thẳng log_consumable nên cả hai bước dùng chung một
+--  transaction: log hỏng thì mã vật tư cũng không được tạo.
+--
+--  Mã vật tư vẫn do client sinh (dạng CHUA-CO-<base36>-<random>) và
+--  truyền vào qua p_code, giữ đúng định dạng cũ.
+--
+--  LƯU Ý hành vi sẵn có, giữ nguyên: vật tư mới được tạo với
+--  closing_qty = 0, nên sau khi ghi qty thì tồn thành âm và
+--  log_consumable LUÔN trả về cảnh báo TỒN ÂM. Đúng như thiết kế -
+--  kho sẽ bổ sung mã và cập nhật tồn thực tế sau.
+-- =====================================================================
+create or replace function log_manual_consumable(
+  p_user_id     int,
+  p_code        text,
+  p_description text,
+  p_unit        text,
+  p_qty         numeric,
+  p_job_code    text,
+  p_user_name   text default null,
+  p_occurred_at timestamptz default null
+)
+returns jsonb
+language plpgsql
+as $$
+declare
+  nm text := btrim(coalesce(p_description, ''));
+  un text := btrim(coalesce(p_unit, ''));
+begin
+  if nm = '' then
+    raise exception 'Hãy nhập tên vật tư';
+  end if;
+  if un = '' then
+    raise exception 'Hãy nhập đơn vị tính';
+  end if;
+
+  insert into materials (
+    code, description, description_vi, unit, category,
+    min_stock, closing_qty, lead_time_days, has_expiry, expiry_date, unit_price
+  ) values (
+    p_code, nm, nm, un, 'consumable',
+    0, 0, 0, false, null, 0
+  );
+
+  -- Cùng transaction: log hỏng thì insert materials ở trên cũng rollback.
+  return log_consumable(
+    p_user_id, p_code, p_qty, p_job_code,
+    'Vật tư nhập tay - chưa có trong danh mục',
+    p_user_name, p_occurred_at
+  );
+end;
+$$;
+
+grant execute on function log_manual_consumable(int, text, text, text, numeric, text, text, timestamptz) to anon, authenticated;
