@@ -219,9 +219,28 @@ export async function logManualConsumable(
   }
 
   try {
-    const { error } = await supabase.from('materials').insert(material)
+    // Tạo mã vật tư và ghi nhật ký nằm chung MỘT transaction - xem hàm
+    // log_manual_consumable trong supabase/schema.sql. Bản cũ làm hai
+    // bước rời nhau, nên khi bước ghi nhật ký hỏng thì mã CHUA-CO-...
+    // nằm lại trong danh mục vĩnh viễn mà không gắn với nhật ký nào.
+    const { data, error } = await supabase.rpc('log_manual_consumable', {
+      p_user_id: userId,
+      p_code: code,
+      p_description: cleanName,
+      p_unit: cleanUnit,
+      p_qty: qty,
+      p_job_code: jobCode,
+      p_user_name: userName ?? null,
+      p_occurred_at: occurredAt ?? null,
+    })
     if (error) throw error
-    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName, occurredAt)
+
+    const res = data as {
+      log: ConsumableLog
+      closing_qty: number
+      warning: string | null
+    }
+    return ok({ log: res.log, closing_qty: res.closing_qty }, res.warning ?? undefined)
   } catch (e) {
     return fail(e)
   }
