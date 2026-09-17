@@ -11,6 +11,9 @@ dist
 dist-ssr
 *.local
 
+# cache cua tsc -b (da tro vao node_modules/.tmp, giu phong ho)
+*.tsbuildinfo
+
 # Editor
 .vscode/*
 !.vscode/extensions.json

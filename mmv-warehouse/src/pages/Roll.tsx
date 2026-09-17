@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Scissors, Pencil, List } from 'lucide-react'
+import { Scissors, Pencil, List } from 'lucide-react'
 import { getActiveRolls, getJobs, logRollCut } from '@/lib/api'
 import { useAuth } from '@/store/useAuth'
 import { toast } from '@/store/useToast'

@@ -6,7 +6,12 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    "noEmit": false
+    "noEmit": false,
+    // composite bat buoc phai emit. Day ket qua vao node_modules/.tmp de
+    // tsc -b khong sinh vite.config.js canh vite.config.ts - Vite doc
+    // vite.config.js TRUOC file .ts, nen ban sinh ra se de len file nguon.
+    "outDir": "node_modules/.tmp/tsconfig-node",
+    "tsBuildInfoFile": "node_modules/.tmp/tsconfig.node.tsbuildinfo"
   },
   "include": ["vite.config.ts"]
 }
