@@ -48,55 +48,56 @@ export const MATERIALS: Material[] = [
 ]
 
 let _uid = 1
+const uid = () => _uid++
 export const USERS: User[] = [
   // === Workshop Manager ===
-  { id: _uid++, name: 'Nguyen Khac Vinh',       role: 'manager', pin: '2222', active: true },
+  { id: uid(), name: 'Nguyen Khac Vinh',       role: 'manager', pin: '2222', active: true },
   // === Workshop: Senior Engineer / Supervisor ===
-  { id: _uid++, name: 'Nguyen Thanh Vinh',      role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Pham Van Huy',           role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Le Van Quang',           role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Tran Van Thuc',          role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Le Hong Tu',             role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Cao Minh Tuan',          role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Le Duy Thang',           role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Dao Ngan Lam',           role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Thanh Vinh',      role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Pham Van Huy',           role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Le Van Quang',           role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Tran Van Thuc',          role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Le Hong Tu',             role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Cao Minh Tuan',          role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Le Duy Thang',           role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Dao Ngan Lam',           role: 'ktv', pin: '', active: true },
   // === Workshop: Engineer ===
-  { id: _uid++, name: 'Duong Manh Hien',        role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Nguyen Truc Tai',        role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Le Truong Hau',          role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Tran Xuan Hop',          role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Nguyen Ngoc Minh',       role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Duong Manh Hien',        role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Truc Tai',        role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Le Truong Hau',          role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Tran Xuan Hop',          role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Ngoc Minh',       role: 'ktv', pin: '', active: true },
   // === Workshop: Technician ===
-  { id: _uid++, name: 'Nguyen Hoang Phuc',      role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Nguyen Anh Duc',         role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Nguyen Van Cuong',       role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Vu Duc Hanh',            role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Luong Van Hai',          role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Hoang Phuc',      role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Anh Duc',         role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Van Cuong',       role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Vu Duc Hanh',            role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Luong Van Hai',          role: 'ktv', pin: '', active: true },
   // === Workshop: 2 thanh vien moi ===
-  { id: _uid++, name: 'Le Quoc Khiem',          role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Le Minh Hieu',           role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Le Quoc Khiem',          role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Le Minh Hieu',           role: 'ktv', pin: '', active: true },
   // === Engineering (Pham Van Huy va Le Van Quang da co o Workshop, khong lap lai) ===
-  { id: _uid++, name: 'Pham Tu',                role: 'ktv', pin: '', active: true },
-  { id: _uid++, name: 'Pham Do',                role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Pham Tu',                role: 'ktv', pin: '', active: true },
+  { id: uid(), name: 'Pham Do',                role: 'ktv', pin: '', active: true },
   // === Customs & Logistic / Procurement ===
-  { id: _uid++, name: 'Tran Quyen',             role: 'warehouse', pin: '', active: true },
-  { id: _uid++, name: 'Dao Dung',               role: 'warehouse', pin: '', active: true },
-  { id: _uid++, name: 'Luong Thu',              role: 'warehouse', pin: '', active: true },
-  { id: _uid++, name: 'Le Quoc Dat',            role: 'warehouse', pin: '1111', active: true },
+  { id: uid(), name: 'Tran Quyen',             role: 'warehouse', pin: '', active: true },
+  { id: uid(), name: 'Dao Dung',               role: 'warehouse', pin: '', active: true },
+  { id: uid(), name: 'Luong Thu',              role: 'warehouse', pin: '', active: true },
+  { id: uid(), name: 'Le Quoc Dat',            role: 'warehouse', pin: '1111', active: true },
   // === Sales ===
-  { id: _uid++, name: 'Tran Thi Dao Binh',      role: 'sales', pin: '', active: true },
-  { id: _uid++, name: 'Nguyen Thi Van Anh',     role: 'sales', pin: '', active: true },
-  { id: _uid++, name: 'Chu Thao Nguyen',        role: 'sales', pin: '', active: true },
-  { id: _uid++, name: 'Bui Duc Nam',            role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Tran Thi Dao Binh',      role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Thi Van Anh',     role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Chu Thao Nguyen',        role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Bui Duc Nam',            role: 'sales', pin: '', active: true },
   // === Bidding ===
-  { id: _uid++, name: 'Nguyen Lan',             role: 'sales', pin: '', active: true },
-  { id: _uid++, name: 'Nguyen Trang',           role: 'sales', pin: '', active: true },
-  { id: _uid++, name: 'Duong Nhu',              role: 'sales', pin: '', active: true },
-  { id: _uid++, name: 'Nguyen Tuan',            role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Lan',             role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Trang',           role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Duong Nhu',              role: 'sales', pin: '', active: true },
+  { id: uid(), name: 'Nguyen Tuan',            role: 'sales', pin: '', active: true },
   // === Admin accounts ===
-  { id: _uid++, name: 'Admin 1', role: 'admin', pin: 'mermaid123', active: true },
-  { id: _uid++, name: 'Admin 2', role: 'admin', pin: 'mermaid123', active: true },
-  { id: _uid++, name: 'Admin 3', role: 'admin', pin: 'mermaid123', active: true },
+  { id: uid(), name: 'Admin 1', role: 'admin', pin: 'mermaid123', active: true },
+  { id: uid(), name: 'Admin 2', role: 'admin', pin: 'mermaid123', active: true },
+  { id: uid(), name: 'Admin 3', role: 'admin', pin: 'mermaid123', active: true },
 ]
 
 export const JOBS: Job[] = [
