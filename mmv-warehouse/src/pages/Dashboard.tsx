@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, AreaChart, Area,
 } from 'recharts'
 import {
@@ -10,10 +10,9 @@ import {
 import { toast } from '@/store/useToast'
 import { useAuth } from '@/store/useAuth'
 import type { Material, Movement } from '@/lib/types'
-import { PageHeader } from '@/components/PageHeader'
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
 import { LoadingScreen } from '@/components/ui/spinner'
-import { fmtQty, fmtDate, fmtDateTime, fmtMoney, toISODate } from '@/lib/format'
+import { fmtQty, fmtDate, fmtDateTime, toISODate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Package, AlertTriangle, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react'
 

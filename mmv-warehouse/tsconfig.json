@@ -17,6 +17,8 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
+    // giu tsconfig.tsbuildinfo ra khoi thu muc goc du an
+    "tsBuildInfoFile": "node_modules/.tmp/tsconfig.tsbuildinfo",
     "paths": {
       "@/*": ["./src/*"]
     }

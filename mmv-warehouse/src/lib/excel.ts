@@ -12,8 +12,6 @@ type Style = NonNullable<XLSX.CellObject['s']>
 
 const NAVY = '1F4E79'
 const RED = 'C00000'
-const YELLOW = 'FFF2CC'
-const GREY = 'D9D9D9'
 const WHITE = 'FFFFFF'
 
 function thin() {
