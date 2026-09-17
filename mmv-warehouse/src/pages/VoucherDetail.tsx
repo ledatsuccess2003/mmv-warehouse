@@ -43,6 +43,9 @@ export default function VoucherDetail() {
       return
     }
     toast.success('Đã duyệt phiếu & cập nhật kho')
+    // Liệt kê dòng bị bỏ qua và mã vừa được tự tạo. Trước đây những
+    // chuyện này xảy ra lặng lẽ, người duyệt không có cách nào biết.
+    if (res.warning) toast.error(res.warning)
     load()
   }
 

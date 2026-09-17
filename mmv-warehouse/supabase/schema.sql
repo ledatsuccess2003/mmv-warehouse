@@ -201,15 +201,27 @@ end $$;
 --  giữa chừng để lại phiếu vẫn 'draft' trong khi kho đã bị trừ một phần
 --  -- bấm "Xác nhận & Trừ kho" lần nữa là ghi trùng toàn bộ.
 --
---  Hàm này giữ NGUYÊN ngữ nghĩa cũ, chỉ đổi ba điểm:
---    1. Cả khối chạy trong một transaction: hoặc xong hết, hoặc không
---       ghi gì.
+--  Cơ chế:
+--    1. Cả khối chạy trong một transaction.
 --    2. SELECT ... FOR UPDATE khóa phiếu, chặn hai người duyệt cùng lúc.
---    3. closing_qty = closing_qty +/- q là phép cộng nguyên tử, thay cho
---       đọc-rồi-ghi-đè (hai người thao tác cùng lúc sẽ mất một lần trừ).
+--    3. closing_qty = closing_qty +/- q là phép cộng nguyên tử.
+--
+--  Giai đoạn 2 bổ sung hai điều, đều nhằm chặn sai âm thầm:
+--    - Mã chưa có trong danh mục: TRƯỚC ĐÂY vẫn ghi movements nhưng
+--      không trừ kho, làm sổ cái và tồn kho lệch nhau mà không ai biết.
+--      NAY tự tạo vật tư với tồn 0 rồi cộng trừ bình thường, giống cách
+--      log_manual_consumable đang làm. Sổ cái và tồn kho luôn khớp.
+--    - Dòng bị bỏ qua (thiếu mã, hoặc số lượng <= 0) TRƯỚC ĐÂY biến mất
+--      lặng lẽ. NAY được liệt kê trong warning trả về.
+--
+--  Vì phải trả thêm warning nên kiểu trả về đổi từ vouchers sang jsonb:
+--  { "voucher": {...}, "warning": "..." | null }
+--  create or replace không đổi được kiểu trả về, nên phải drop trước.
 -- =====================================================================
+drop function if exists confirm_voucher(int);
+
 create or replace function confirm_voucher(p_voucher_id int)
-returns vouchers
+returns jsonb
 language plpgsql
 as $$
 declare
@@ -218,6 +230,14 @@ declare
   q            numeric;
   creator_name text;
   n_items      int;
+  skipped      text[] := '{}';
+  created      text[] := '{}';
+  parts        text[] := '{}';
+  warn         text;
+  m_desc       text;
+  m_desc_vi    text;
+  m_unit       text;
+  nm           text;
 begin
   select * into v from vouchers where id = p_voucher_id for update;
   if not found then
@@ -242,7 +262,8 @@ begin
     select vi.*,
            m.description    as m_description,
            m.description_vi as m_description_vi,
-           m.unit           as m_unit
+           m.unit           as m_unit,
+           (m.code is not null) as has_material
       from voucher_items vi
       left join materials m on m.code = vi.material_code
      where vi.voucher_id = p_voucher_id
@@ -250,25 +271,60 @@ begin
   loop
     q := coalesce(it.qty_actual, it.qty_theory, 0);
 
-    -- Bỏ qua dòng thiếu mã hoặc số lượng <= 0, đúng như bản JS cũ.
-    continue when it.material_code is null or it.material_code = '' or q <= 0;
+    -- Dòng thiếu mã hoặc số lượng <= 0: vẫn bỏ qua như cũ, nhưng nay
+    -- có tên trong warning thay vì biến mất không dấu vết.
+    if it.material_code is null or btrim(it.material_code) = '' or q <= 0 then
+      skipped := skipped || coalesce(
+        nullif(btrim(it.material_code), ''),
+        nullif(btrim(it.description), ''),
+        'dòng #' || it.id
+      );
+      continue;
+    end if;
+
+    m_desc    := it.m_description;
+    m_desc_vi := it.m_description_vi;
+    m_unit    := it.m_unit;
+
+    if not it.has_material then
+      nm := coalesce(nullif(btrim(it.description), ''), it.material_code);
+
+      -- on conflict: hai dòng cùng một mã lạ trong cùng phiếu thì dòng
+      -- sau không làm hỏng transaction.
+      insert into materials (
+        code, description, description_vi, unit, category,
+        min_stock, closing_qty, lead_time_days, has_expiry, expiry_date, unit_price
+      ) values (
+        it.material_code, nm, nm, nullif(btrim(it.unit), ''), 'consumable',
+        0, 0, 0, false, null, 0
+      )
+      on conflict (code) do nothing;
+
+      if found then
+        created := created || it.material_code;
+      end if;
+
+      m_desc    := nm;
+      m_desc_vi := nm;
+      m_unit    := nullif(btrim(it.unit), '');
+    end if;
 
     insert into movements (
       source_type, source_id, date, code, description, unit,
       receipt, issue, job_code, vessel, user_id, user_name
     ) values (
       'voucher', v.id, v.date, it.material_code,
-      coalesce(nullif(it.m_description, ''),
-               nullif(it.m_description_vi, ''),
+      coalesce(nullif(m_desc, ''),
+               nullif(m_desc_vi, ''),
                nullif(it.description, '')),
-      coalesce(nullif(it.unit, ''), nullif(it.m_unit, '')),
+      coalesce(nullif(it.unit, ''), nullif(m_unit, '')),
       case when v.type = 'IN' then q else 0 end,
       case when v.type = 'IN' then 0 else q end,
       v.job_code, v.vessel, v.created_by, creator_name
     );
 
-    -- Mã không có trong materials thì lệnh này không chạm dòng nào,
-    -- giữ đúng hành vi cũ (guard `if (mat)` bên JS).
+    -- Mã nào cũng đã có trong materials ở bước trên, nên lệnh này luôn
+    -- chạm đúng một dòng: sổ cái và tồn kho không còn lệch nhau nữa.
     update materials
        set closing_qty = closing_qty + case when v.type = 'IN' then q else -q end
      where code = it.material_code;
@@ -277,7 +333,18 @@ begin
   update vouchers set status = 'confirmed' where id = p_voucher_id
   returning * into v;
 
-  return v;
+  if array_length(skipped, 1) > 0 then
+    parts := parts || ('Bỏ qua ' || array_length(skipped, 1)
+             || ' dòng thiếu mã hoặc số lượng <= 0: ' || array_to_string(skipped, ', '));
+  end if;
+  if array_length(created, 1) > 0 then
+    parts := parts || ('Tự tạo ' || array_length(created, 1)
+             || ' mã chưa có trong danh mục, cần bổ sung thông tin và kiểm lại tồn: '
+             || array_to_string(created, ', '));
+  end if;
+  warn := nullif(array_to_string(parts, ' · '), '');
+
+  return jsonb_build_object('voucher', to_jsonb(v), 'warning', warn);
 end;
 $$;
 
@@ -535,3 +602,37 @@ end;
 $$;
 
 grant execute on function log_manual_consumable(int, text, text, text, numeric, text, text, timestamptz) to anon, authenticated;
+
+-- =====================================================================
+--  VIEW: v_doi_soat_ton_kho - đối soát sổ cái với tồn kho
+--
+--  movements là sổ cái append-only, materials.closing_qty là con số tồn
+--  hiển thị. Hai đường này độc lập nhau và trước Giai đoạn 1 không có
+--  gì bảo đảm chúng khớp. View này là chỗ để lệch tự lộ ra.
+--
+--  Cách dùng: chạy trong Supabase SQL Editor, định kỳ hoặc mỗi khi nghi
+--  ngờ số liệu:
+--      select * from v_doi_soat_ton_kho;
+--  Không trả dòng nào = khớp hết.
+--
+--  LƯU Ý khi đọc kết quả: cột chenh_lech KHÔNG phải lúc nào cũng là
+--  lỗi. Tồn đầu kỳ nạp từ seed.sql không đi qua movements, nên mọi mã
+--  có tồn ban đầu đều lệch đúng bằng số tồn đó. View này dùng để theo
+--  dõi chênh lệch THAY ĐỔI theo thời gian: chốt lại con số hôm nay, sau
+--  này lệch khác đi mới là dấu hiệu có chuyện.
+-- =====================================================================
+create or replace view v_doi_soat_ton_kho as
+select
+  m.code,
+  m.description_vi,
+  m.unit,
+  m.closing_qty                                    as ton_hien_tai,
+  coalesce(sum(mv.receipt - mv.issue), 0)          as theo_so_cai,
+  m.closing_qty - coalesce(sum(mv.receipt - mv.issue), 0) as chenh_lech
+from materials m
+left join movements mv on mv.code = m.code
+group by m.code, m.description_vi, m.unit, m.closing_qty
+having m.closing_qty <> coalesce(sum(mv.receipt - mv.issue), 0)
+order by abs(m.closing_qty - coalesce(sum(mv.receipt - mv.issue), 0)) desc;
+
+grant select on v_doi_soat_ton_kho to anon, authenticated;
