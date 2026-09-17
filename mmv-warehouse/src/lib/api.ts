@@ -472,60 +472,16 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
     return ok(voucher)
   }
   try {
-    const { data: voucher, error: vErr } = await supabase
-      .from('vouchers')
-      .select('*, creator:users(name)')
-      .eq('id', voucherId)
-      .single()
-    if (vErr) throw vErr
-    if (voucher.status === 'confirmed') throw new Error('Phiếu đã được duyệt trước đó')
-    const creatorName = (voucher as any).creator?.name ?? voucher.receiver ?? null
-
-    const { data: items, error: iErr } = await supabase
-      .from('voucher_items')
-      .select('*, material:materials(*)')
-      .eq('voucher_id', voucherId)
-    if (iErr) throw iErr
-    if (!items || !items.length) throw new Error('Phiếu chưa có dòng hàng')
-
-    const isIn = voucher.type === 'IN'
-
-    for (const it of items as (VoucherItem & { material?: Material })[]) {
-      const qty = Number(it.qty_actual ?? it.qty_theory ?? 0)
-      if (!it.material_code || qty <= 0) continue
-      const mat = it.material
-
-      // ghi movements
-      await supabase.from('movements').insert({
-        source_type: 'voucher',
-        source_id: voucher.id,
-        date: voucher.date,
-        code: it.material_code,
-        description: mat?.description || mat?.description_vi || it.description || null,
-        unit: it.unit || mat?.unit || null,
-        receipt: isIn ? qty : 0,
-        issue: isIn ? 0 : qty,
-        job_code: voucher.job_code,
-        vessel: voucher.vessel,
-        user_id: voucher.created_by,
-        user_name: creatorName,
-      })
-
-      // cập nhật tồn kho
-      if (mat) {
-        const newClosing = Number(mat.closing_qty) + (isIn ? qty : -qty)
-        await supabase.from('materials').update({ closing_qty: newClosing }).eq('code', it.material_code)
-      }
-    }
-
-    const { data: updated, error: uErr } = await supabase
-      .from('vouchers')
-      .update({ status: 'confirmed' })
-      .eq('id', voucherId)
-      .select()
-      .single()
-    if (uErr) throw uErr
-    return ok(updated as Voucher)
+    // Cả ba lệnh ghi (movements, materials.closing_qty, vouchers.status)
+    // nằm gọn trong một transaction phía Postgres - xem hàm
+    // confirm_voucher trong supabase/schema.sql. Hàm đó cũng khóa phiếu
+    // bằng SELECT ... FOR UPDATE, nên bấm duyệt hai lần không còn ghi
+    // trùng, và cộng trừ tồn kho là phép nguyên tử thay vì đọc-rồi-ghi-đè.
+    const { data, error } = await supabase.rpc('confirm_voucher', {
+      p_voucher_id: voucherId,
+    })
+    if (error) throw error
+    return ok(data as Voucher)
   } catch (e) {
     return fail(e)
   }

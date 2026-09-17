@@ -187,7 +187,13 @@ export interface Database {
       roll_cuts: TableDef<RollCut>
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      // Duyệt phiếu IN/OUT trong một transaction. Xem supabase/schema.sql.
+      confirm_voucher: {
+        Args: { p_voucher_id: number }
+        Returns: Voucher
+      }
+    }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
   }
