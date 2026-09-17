@@ -191,3 +191,94 @@ begin
     );
   end loop;
 end $$;
+
+-- =====================================================================
+--  RPC: confirm_voucher - duyệt phiếu IN/OUT trong MỘT transaction
+--
+--  Trước đây client (src/lib/api.ts) ghi tay từng lệnh rời rạc cho mỗi
+--  dòng hàng: insert movements, rồi update materials.closing_qty, cuối
+--  cùng update vouchers.status. Không có transaction bao ngoài, nên lỗi
+--  giữa chừng để lại phiếu vẫn 'draft' trong khi kho đã bị trừ một phần
+--  -- bấm "Xác nhận & Trừ kho" lần nữa là ghi trùng toàn bộ.
+--
+--  Hàm này giữ NGUYÊN ngữ nghĩa cũ, chỉ đổi ba điểm:
+--    1. Cả khối chạy trong một transaction: hoặc xong hết, hoặc không
+--       ghi gì.
+--    2. SELECT ... FOR UPDATE khóa phiếu, chặn hai người duyệt cùng lúc.
+--    3. closing_qty = closing_qty +/- q là phép cộng nguyên tử, thay cho
+--       đọc-rồi-ghi-đè (hai người thao tác cùng lúc sẽ mất một lần trừ).
+-- =====================================================================
+create or replace function confirm_voucher(p_voucher_id int)
+returns vouchers
+language plpgsql
+as $$
+declare
+  v            vouchers%rowtype;
+  it           record;
+  q            numeric;
+  creator_name text;
+  n_items      int;
+begin
+  select * into v from vouchers where id = p_voucher_id for update;
+  if not found then
+    raise exception 'Không tìm thấy phiếu';
+  end if;
+  if v.status = 'confirmed' then
+    raise exception 'Phiếu đã được duyệt trước đó';
+  end if;
+
+  select count(*) into n_items from voucher_items where voucher_id = p_voucher_id;
+  if n_items = 0 then
+    raise exception 'Phiếu chưa có dòng hàng';
+  end if;
+
+  -- Tên người thực hiện: ưu tiên tên trong bảng users, không có thì lấy
+  -- ô receiver của phiếu. Ghi thẳng vào movements để báo cáo cũ không
+  -- đổi khi sau này user đổi tên.
+  select u.name into creator_name from users u where u.id = v.created_by;
+  creator_name := coalesce(creator_name, v.receiver);
+
+  for it in
+    select vi.*,
+           m.description    as m_description,
+           m.description_vi as m_description_vi,
+           m.unit           as m_unit
+      from voucher_items vi
+      left join materials m on m.code = vi.material_code
+     where vi.voucher_id = p_voucher_id
+     order by vi.id
+  loop
+    q := coalesce(it.qty_actual, it.qty_theory, 0);
+
+    -- Bỏ qua dòng thiếu mã hoặc số lượng <= 0, đúng như bản JS cũ.
+    continue when it.material_code is null or it.material_code = '' or q <= 0;
+
+    insert into movements (
+      source_type, source_id, date, code, description, unit,
+      receipt, issue, job_code, vessel, user_id, user_name
+    ) values (
+      'voucher', v.id, v.date, it.material_code,
+      coalesce(nullif(it.m_description, ''),
+               nullif(it.m_description_vi, ''),
+               nullif(it.description, '')),
+      coalesce(nullif(it.unit, ''), nullif(it.m_unit, '')),
+      case when v.type = 'IN' then q else 0 end,
+      case when v.type = 'IN' then 0 else q end,
+      v.job_code, v.vessel, v.created_by, creator_name
+    );
+
+    -- Mã không có trong materials thì lệnh này không chạm dòng nào,
+    -- giữ đúng hành vi cũ (guard `if (mat)` bên JS).
+    update materials
+       set closing_qty = closing_qty + case when v.type = 'IN' then q else -q end
+     where code = it.material_code;
+  end loop;
+
+  update vouchers set status = 'confirmed' where id = p_voucher_id
+  returning * into v;
+
+  return v;
+end;
+$$;
+
+grant execute on function confirm_voucher(int) to anon, authenticated;
