@@ -1,25 +1,35 @@
+import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { LoadingScreen } from './components/ui/spinner'
 
+// Login va Home nap thang: day la hai man dau tien moi nguoi deu thay,
+// cho them mot vong tai o day chi lam cham cam nhan.
 import Login from './pages/Login'
 import Home from './pages/Home'
-import Pick from './pages/Pick'
-import Roll from './pages/Roll'
-import History from './pages/History'
-import VoucherNew from './pages/VoucherNew'
-import Vouchers from './pages/Vouchers'
-import VoucherDetail from './pages/VoucherDetail'
-import Movement from './pages/Movement'
-import Inventory from './pages/Inventory'
-import Dashboard from './pages/Dashboard'
-import CostByJob from './pages/CostByJob'
-import ReportWeekly from './pages/ReportWeekly'
-import ReportUser from './pages/ReportUser'
+
+// Cac man con lai nap theo nhu cau. Dang ke nhat la Dashboard, CostByJob
+// va ReportUser - ba man duy nhat dung recharts, ma KTV ngoai xuong
+// khong co quyen vao.
+const Pick = lazy(() => import('./pages/Pick'))
+const Roll = lazy(() => import('./pages/Roll'))
+const History = lazy(() => import('./pages/History'))
+const VoucherNew = lazy(() => import('./pages/VoucherNew'))
+const Vouchers = lazy(() => import('./pages/Vouchers'))
+const VoucherDetail = lazy(() => import('./pages/VoucherDetail'))
+const Movement = lazy(() => import('./pages/Movement'))
+const Inventory = lazy(() => import('./pages/Inventory'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const CostByJob = lazy(() => import('./pages/CostByJob'))
+const ReportWeekly = lazy(() => import('./pages/ReportWeekly'))
+const ReportUser = lazy(() => import('./pages/ReportUser'))
+
 import { InstallAppPrompt } from './components/InstallAppPrompt'
 
 export default function App() {
   return (
     <>
+    <Suspense fallback={<LoadingScreen />}>
     <Routes>
       <Route path="/login" element={<Login />} />
 
@@ -74,6 +84,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
+    </Suspense>
     <InstallAppPrompt />
     </>
   )

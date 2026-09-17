@@ -21,12 +21,6 @@ import type {
   CostByJobRow,
   MovementReportRow,
 } from './types'
-import {
-  buildMaterialWorkbook,
-  buildMovementWorkbook,
-  buildVoucherWorkbook,
-  saveWorkbook,
-} from './excel'
 
 function ok<T>(data: T, warning?: string): ApiResult<T> {
   return { success: true, data, error: null, warning }
@@ -362,24 +356,44 @@ export async function createVoucher(
     return ok({ voucher, items })
   }
   try {
-    const voucher_no = await nextVoucherNo()
+    // nextVoucherNo() đọc số lớn nhất trong tháng rồi +1, nên hai người
+    // tạo phiếu cùng lúc sẽ đọc ra cùng một số. Cột voucher_no có ràng
+    // buộc unique nên lần insert thứ hai báo lỗi 23505 (unique_violation).
+    // Bắt đúng mã đó và thử lại với số kế tiếp, thay vì để người dùng
+    // thấy một thông báo lỗi khó hiểu và phải tự bấm lại.
+    let voucher: Voucher | null = null
+    let lastErr: unknown = null
 
-    const { data: voucher, error: vErr } = await supabase
-      .from('vouchers')
-      .insert({
-        voucher_no,
-        type,
-        date: data.date,
-        receiver: data.receiver ?? null,
-        supplier: data.supplier ?? null,
-        vessel: data.vessel ?? null,
-        job_code: data.job_code ?? null,
-        status: 'draft',
-        created_by: data.created_by ?? null,
-      })
-      .select()
-      .single()
-    if (vErr) throw vErr
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const voucher_no = await nextVoucherNo()
+      const { data: created, error: vErr } = await supabase
+        .from('vouchers')
+        .insert({
+          voucher_no,
+          type,
+          date: data.date,
+          receiver: data.receiver ?? null,
+          supplier: data.supplier ?? null,
+          vessel: data.vessel ?? null,
+          job_code: data.job_code ?? null,
+          status: 'draft',
+          created_by: data.created_by ?? null,
+        })
+        .select()
+        .single()
+
+      if (!vErr) {
+        voucher = created as Voucher
+        break
+      }
+      // Chỉ thử lại khi trùng số phiếu; lỗi khác thì ném ra ngay.
+      if ((vErr as { code?: string }).code !== '23505') throw vErr
+      lastErr = vErr
+    }
+
+    if (!voucher) {
+      throw lastErr ?? new Error('Không cấp được số phiếu, hãy thử lại')
+    }
 
     const rows = (data.items || []).map((it) => ({
       voucher_id: voucher.id,
@@ -397,7 +411,7 @@ export async function createVoucher(
       if (iErr) throw iErr
       items = (inserted ?? []) as VoucherItem[]
     }
-    return ok({ voucher: voucher as Voucher, items })
+    return ok({ voucher, items })
   } catch (e) {
     return fail(e)
   }
@@ -1022,6 +1036,9 @@ export async function exportMaterialExcel(): Promise<ApiResult<null>> {
     ])
     if (e1) throw e1
     if (e2) throw e2
+    // Nap xlsx-js-style theo nhu cau. Thu vien nay nang, ma phan lon
+    // nguoi dung (KTV bam lay vat tu) khong bao gio xuat file.
+    const { buildMaterialWorkbook, saveWorkbook } = await import('./excel')
     const wb = buildMaterialWorkbook((mats ?? []) as Material[], (movs ?? []) as any)
     saveWorkbook(wb, `Material_${new Date().toISOString().slice(0, 7)}.xlsx`)
     return ok(null)
@@ -1040,6 +1057,7 @@ export async function exportMovementExcel(startDate: string, endDate: string): P
       .order('date')
       .order('id')
     if (error) throw error
+    const { buildMovementWorkbook, saveWorkbook } = await import('./excel')
     const wb = buildMovementWorkbook((movs ?? []) as Movement[], startDate, endDate)
     saveWorkbook(wb, `Movement_${startDate}_${endDate}.xlsx`)
     return ok(null)
@@ -1053,6 +1071,7 @@ export async function exportVoucherExcel(voucherId: number): Promise<ApiResult<n
     const res = await getVoucher(voucherId)
     if (!res.success || !res.data) throw new Error(res.error ?? 'Không đọc được phiếu')
     const { voucher, items } = res.data
+    const { buildVoucherWorkbook, saveWorkbook } = await import('./excel')
     const wb = buildVoucherWorkbook(voucher, items)
     const prefix = voucher.type === 'OUT' ? 'ISSUE' : 'RECEIVING'
     saveWorkbook(wb, `${prefix}_VOUCHER_${voucher.voucher_no}.xlsx`)
