@@ -725,62 +725,24 @@ export async function logRollCut(
     return ok({ remaining: Math.max(0, remaining), finished })
   }
   try {
+    // Kiểm luôn ở client để phản hồi ngay, không tốn một vòng gọi mạng.
+    // Hàm SQL cũng kiểm lại điều kiện này.
     if (!lengthUsed || lengthUsed <= 0) throw new Error('Số mét cắt phải lớn hơn 0')
 
-    const { data: roll, error: rErr } = await supabase
-      .from('roll_tracking')
-      .select('*')
-      .eq('roll_id', rollId)
-      .single()
-    if (rErr) throw rErr
-
-    const { error: cErr } = await supabase.from('roll_cuts').insert({
-      roll_id: rollId,
-      user_id: userId,
-      job_code: jobCode,
-      length_used: lengthUsed,
+    // Cả 4 lệnh ghi (roll_cuts, roll_tracking.used_length,
+    // materials.closing_qty, movements) nằm trong một transaction phía
+    // Postgres - xem hàm log_roll_cut trong supabase/schema.sql. Hàm đó
+    // khóa cuộn bằng SELECT ... FOR UPDATE và cộng trừ nguyên tử, nên
+    // hai KTV cắt cùng một cuộn cùng lúc không còn làm mất một lần ghi.
+    const { data, error } = await supabase.rpc('log_roll_cut', {
+      p_roll_id: rollId,
+      p_user_id: userId,
+      p_job_code: jobCode,
+      p_length_used: lengthUsed,
+      p_user_name: userName ?? null,
     })
-    if (cErr) throw cErr
-
-    const newUsed = Number(roll.used_length) + lengthUsed
-    const remaining = Number(roll.total_length) - newUsed
-    const finished = remaining <= 0
-
-    const { error: uErr } = await supabase
-      .from('roll_tracking')
-      .update({ used_length: newUsed, status: finished ? 'finished' : 'active' })
-      .eq('roll_id', rollId)
-    if (uErr) throw uErr
-
-    // trừ tồn kho vật tư cuộn + ghi movement
-    if (roll.material_code) {
-      const { data: mat } = await supabase
-        .from('materials')
-        .select('closing_qty, unit, description, description_vi')
-        .eq('code', roll.material_code)
-        .single()
-      if (mat) {
-        await supabase
-          .from('materials')
-          .update({ closing_qty: Number(mat.closing_qty) - lengthUsed })
-          .eq('code', roll.material_code)
-        await supabase.from('movements').insert({
-          source_type: 'roll',
-          source_id: roll.id,
-          date: toISODate(),
-          code: roll.material_code,
-          description: mat.description || mat.description_vi,
-          unit: mat.unit,
-          receipt: 0,
-          issue: lengthUsed,
-          job_code: jobCode,
-          vessel: null,
-          user_id: userId,
-          user_name: userName ?? null,
-        })
-      }
-    }
-    return ok({ remaining, finished })
+    if (error) throw error
+    return ok(data as { remaining: number; finished: boolean })
   } catch (e) {
     return fail(e)
   }

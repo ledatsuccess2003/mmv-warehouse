@@ -282,3 +282,97 @@ end;
 $$;
 
 grant execute on function confirm_voucher(int) to anon, authenticated;
+
+-- =====================================================================
+--  RPC: log_roll_cut - ghi một lần cắt cuộn trong MỘT transaction
+--
+--  Bản cũ ở client ghi 4 lệnh rời rạc: insert roll_cuts, update
+--  roll_tracking.used_length, update materials.closing_qty, insert
+--  movements. Cả used_length lẫn closing_qty đều cập nhật kiểu
+--  đọc-rồi-ghi-đè, nên hai KTV cắt cùng một cuộn cùng lúc sẽ mất một
+--  lần ghi: cuộn bị ghi nhận thiếu số mét đã dùng.
+--
+--  Hàm này giữ nguyên ngữ nghĩa cũ, chỉ đổi:
+--    1. Một transaction cho cả 4 lệnh.
+--    2. SELECT ... FOR UPDATE khóa cuộn.
+--    3. used_length và closing_qty cộng trừ nguyên tử.
+--
+--  Ba khác biệt CÓ CHỦ Ý so với nhánh Supabase cũ, đều là chỗ nhánh đó
+--  lệch với nhánh mock; nay thống nhất theo nhánh mock:
+--    - Không tìm thấy cuộn: báo "Không tìm thấy cuộn <id>" thay vì để
+--      lỗi thô của PostgREST lọt ra.
+--    - user_name: nếu client không truyền thì tra bảng users.
+--    - date: lấy theo giờ Việt Nam ở phía server, thay vì ngày local
+--      của máy tablet (đồng hồ tablet sai thì ghi sai ngày).
+-- =====================================================================
+create or replace function log_roll_cut(
+  p_roll_id     text,
+  p_user_id     int,
+  p_job_code    text,
+  p_length_used numeric,
+  p_user_name   text default null
+)
+returns jsonb
+language plpgsql
+as $$
+declare
+  r         roll_tracking%rowtype;
+  m         materials%rowtype;
+  new_used  numeric;
+  remaining numeric;
+  finished  boolean;
+  uname     text;
+begin
+  if p_length_used is null or p_length_used <= 0 then
+    raise exception 'Số mét cắt phải lớn hơn 0';
+  end if;
+
+  select * into r from roll_tracking where roll_id = p_roll_id for update;
+  if not found then
+    raise exception 'Không tìm thấy cuộn %', p_roll_id;
+  end if;
+
+  insert into roll_cuts (roll_id, user_id, job_code, length_used)
+  values (p_roll_id, p_user_id, p_job_code, p_length_used);
+
+  new_used  := coalesce(r.used_length, 0) + p_length_used;
+  remaining := coalesce(r.total_length, 0) - new_used;
+  finished  := remaining <= 0;
+
+  -- Cộng nguyên tử. status quay lại 'active' khi chưa hết cuộn, đúng
+  -- như bản cũ.
+  update roll_tracking
+     set used_length = coalesce(used_length, 0) + p_length_used,
+         status      = case when finished then 'finished' else 'active' end
+   where roll_id = p_roll_id;
+
+  -- Chỉ trừ kho VÀ ghi movements khi mã vật tư của cuộn có thật trong
+  -- danh mục - khác confirm_voucher, nơi movements luôn được ghi.
+  if r.material_code is not null then
+    select * into m from materials where code = r.material_code;
+    if found then
+      update materials
+         set closing_qty = closing_qty - p_length_used
+       where code = r.material_code;
+
+      uname := coalesce(p_user_name, (select name from users where id = p_user_id));
+
+      insert into movements (
+        source_type, source_id, date, code, description, unit,
+        receipt, issue, job_code, vessel, user_id, user_name
+      ) values (
+        'roll', r.id,
+        (now() at time zone 'Asia/Ho_Chi_Minh')::date,
+        r.material_code,
+        coalesce(nullif(m.description, ''), nullif(m.description_vi, '')),
+        m.unit, 0, p_length_used, p_job_code, null, p_user_id, uname
+      );
+    end if;
+  end if;
+
+  -- remaining KHÔNG kẹp về 0, giữ đúng bản Supabase cũ.
+  return jsonb_build_object('remaining', remaining, 'finished', finished);
+end;
+$$;
+
+grant execute on function log_roll_cut(text, int, text, numeric, text) to anon, authenticated;

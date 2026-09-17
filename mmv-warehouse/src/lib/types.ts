@@ -188,7 +188,18 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
-      // Duyệt phiếu IN/OUT trong một transaction. Xem supabase/schema.sql.
+      // Các RPC gom nhiều lệnh ghi vào một transaction.
+      // Xem supabase/schema.sql.
+      log_roll_cut: {
+        Args: {
+          p_roll_id: string
+          p_user_id: number
+          p_job_code: string
+          p_length_used: number
+          p_user_name?: string | null
+        }
+        Returns: { remaining: number; finished: boolean }
+      }
       confirm_voucher: {
         Args: { p_voucher_id: number }
         Returns: Voucher
