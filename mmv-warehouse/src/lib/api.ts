@@ -470,7 +470,10 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
       p_voucher_id: voucherId,
     })
     if (error) throw error
-    return ok(data as Voucher)
+
+    // warning liệt kê các dòng bị bỏ qua và các mã vừa được tự tạo.
+    const res = data as { voucher: Voucher; warning: string | null }
+    return ok(res.voucher, res.warning ?? undefined)
   } catch (e) {
     return fail(e)
   }

@@ -235,7 +235,7 @@ export interface Database {
       }
       confirm_voucher: {
         Args: { p_voucher_id: number }
-        Returns: Voucher
+        Returns: { voucher: Voucher; warning: string | null }
       }
     }
     Enums: Record<string, never>
