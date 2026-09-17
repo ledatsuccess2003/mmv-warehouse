@@ -376,3 +376,99 @@ end;
 $$;
 
 grant execute on function log_roll_cut(text, int, text, numeric, text) to anon, authenticated;
+
+-- =====================================================================
+--  RPC: log_consumable - KTV ghi vật tư đã lấy, trong MỘT transaction
+--
+--  Bản cũ ở client ghi 3 lệnh rời rạc: insert consumable_logs, update
+--  materials.closing_qty (đọc-rồi-ghi-đè), insert movements. Đây là
+--  luồng dùng nhiều nhất trong app, và Pick.tsx gọi nó trong vòng lặp
+--  cho từng dòng trong giỏ, nên xác suất hai người chạm cùng một mã
+--  vật tư cùng lúc là cao nhất.
+--
+--  Giữ nguyên ngữ nghĩa nhánh Supabase cũ, gồm cả:
+--    - p_occurred_at ghi đè cả consumable_logs.timestamp lẫn
+--      movements.created_at (Pick.tsx truyền một mốc chung cho cả giỏ)
+--    - description ưu tiên tiếng Anh trước: description -> description_vi
+--    - source_type = 'consumable'
+--    - cảnh báo TỒN ÂM trả về qua ApiResult.warning, KHÔNG chặn giao dịch
+--
+--  Khác biệt có chủ ý:
+--    - Không tìm thấy mã: báo "Không tìm thấy mã vật tư <code>" thay vì
+--      để lỗi thô của PostgREST lọt ra UI.
+--    - closing_qty lấy từ RETURNING của phép trừ nguyên tử, nên số trả
+--      về đúng cả khi có tranh chấp (bản cũ tính từ giá trị đọc trước).
+--    - date tính theo giờ Việt Nam ở server.
+--
+--  LƯU Ý: nhánh mock trong src/lib/mock.ts ghi source_type
+--  'consumable_log' va uu tien description_vi truoc - lech voi nhanh
+--  Supabase tu truoc. Khong sua o day de tranh doi ngu nghia du lieu
+--  that.
+-- =====================================================================
+create or replace function log_consumable(
+  p_user_id       int,
+  p_material_code text,
+  p_qty           numeric,
+  p_job_code      text,
+  p_notes         text default null,
+  p_user_name     text default null,
+  p_occurred_at   timestamptz default null
+)
+returns jsonb
+language plpgsql
+as $$
+declare
+  m           materials%rowtype;
+  lg          consumable_logs%rowtype;
+  ts          timestamptz;
+  new_closing numeric;
+  warn        text;
+begin
+  if p_qty is null or p_qty <= 0 then
+    raise exception 'Số lượng phải lớn hơn 0';
+  end if;
+
+  ts := coalesce(p_occurred_at, now());
+
+  select * into m from materials where code = p_material_code for update;
+  if not found then
+    raise exception 'Không tìm thấy mã vật tư %', p_material_code;
+  end if;
+
+  insert into consumable_logs (user_id, material_code, qty, job_code, notes, timestamp)
+  values (p_user_id, p_material_code, p_qty, p_job_code, p_notes, ts)
+  returning * into lg;
+
+  update materials
+     set closing_qty = closing_qty - p_qty
+   where code = p_material_code
+  returning closing_qty into new_closing;
+
+  insert into movements (
+    source_type, source_id, date, code, description, unit,
+    receipt, issue, job_code, vessel, user_id, user_name, created_at
+  ) values (
+    'consumable', lg.id,
+    (lg.timestamp at time zone 'Asia/Ho_Chi_Minh')::date,
+    p_material_code,
+    coalesce(nullif(m.description, ''), nullif(m.description_vi, '')),
+    m.unit, 0, p_qty, p_job_code, null, p_user_id,
+    coalesce(p_user_name, (select name from users where id = p_user_id)),
+    ts
+  );
+
+  -- Tồn âm được phép, chỉ cảnh báo - đúng như bản cũ.
+  if new_closing < 0 then
+    warn := 'TỒN ÂM: ' || coalesce(m.description_vi, '') || ' còn '
+            || new_closing || ' ' || coalesce(m.unit, '');
+  end if;
+
+  return jsonb_build_object(
+    'log', to_jsonb(lg),
+    'closing_qty', new_closing,
+    'warning', warn
+  );
+end;
+$$;
+
+grant execute on function log_consumable(int, text, numeric, text, text, text, timestamptz) to anon, authenticated;

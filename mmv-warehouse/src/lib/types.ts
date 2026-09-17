@@ -190,6 +190,22 @@ export interface Database {
     Functions: {
       // Các RPC gom nhiều lệnh ghi vào một transaction.
       // Xem supabase/schema.sql.
+      log_consumable: {
+        Args: {
+          p_user_id: number
+          p_material_code: string
+          p_qty: number
+          p_job_code: string
+          p_notes?: string | null
+          p_user_name?: string | null
+          p_occurred_at?: string | null
+        }
+        Returns: {
+          log: ConsumableLog
+          closing_qty: number
+          warning: string | null
+        }
+      }
       log_roll_cut: {
         Args: {
           p_roll_id: string

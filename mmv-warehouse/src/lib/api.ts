@@ -149,60 +149,30 @@ export async function logConsumable(
     return ok({ log, closing_qty: mat.closing_qty }, warning)
   }
   try {
+    // Kiểm luôn ở client để phản hồi ngay; hàm SQL cũng kiểm lại.
     if (!qty || qty <= 0) throw new Error('Số lượng phải lớn hơn 0')
 
-    const { data: mat, error: matErr } = await supabase
-      .from('materials')
-      .select('*')
-      .eq('code', materialCode)
-      .single()
-    if (matErr) throw matErr
-    if (!mat) throw new Error('Không tìm thấy mã vật tư ' + materialCode)
-
-    // 1) ghi nhật ký
-    const logPayload = {
-      user_id: userId,
-      material_code: materialCode,
-      qty,
-      job_code: jobCode,
-      notes: notes ?? null,
-      ...(occurredAt ? { timestamp: occurredAt } : {}),
-    }
-    const { data: log, error: logErr } = await supabase
-      .from('consumable_logs')
-      .insert(logPayload)
-      .select()
-      .single()
-    if (logErr) throw logErr
-
-    // 2) trừ tồn kho
-    const newClosing = Number(mat.closing_qty) - qty
-    const { error: updErr } = await supabase
-      .from('materials')
-      .update({ closing_qty: newClosing })
-      .eq('code', materialCode)
-    if (updErr) throw updErr
-
-    // 3) ghi movements
-    const { error: movErr } = await supabase.from('movements').insert({
-      source_type: 'consumable',
-      source_id: log.id,
-      date: toISODate(new Date(log.timestamp)),
-      code: materialCode,
-      description: mat.description || mat.description_vi,
-      unit: mat.unit,
-      receipt: 0,
-      issue: qty,
-      job_code: jobCode,
-      vessel: null,
-      user_id: userId,
-      user_name: userName ?? null,
-      ...(occurredAt ? { created_at: occurredAt } : {}),
+    // Cả 3 lệnh ghi (consumable_logs, materials.closing_qty, movements)
+    // nằm trong một transaction phía Postgres - xem hàm log_consumable
+    // trong supabase/schema.sql. Tồn kho trừ nguyên tử nên hai người lấy
+    // cùng một mã cùng lúc không còn làm mất một lần trừ.
+    const { data, error } = await supabase.rpc('log_consumable', {
+      p_user_id: userId,
+      p_material_code: materialCode,
+      p_qty: qty,
+      p_job_code: jobCode,
+      p_notes: notes ?? null,
+      p_user_name: userName ?? null,
+      p_occurred_at: occurredAt ?? null,
     })
-    if (movErr) throw movErr
+    if (error) throw error
 
-    const warning = newClosing < 0 ? `TỒN ÂM: ${mat.description_vi} còn ${newClosing} ${mat.unit}` : undefined
-    return ok({ log: log as ConsumableLog, closing_qty: newClosing }, warning)
+    const res = data as {
+      log: ConsumableLog
+      closing_qty: number
+      warning: string | null
+    }
+    return ok({ log: res.log, closing_qty: res.closing_qty }, res.warning ?? undefined)
   } catch (e) {
     return fail(e)
   }
