@@ -5,9 +5,12 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import { toISODate, monthsUntil, monthRange } from './format'
 import { store as mock, USERS } from './mock'
+import { MATERIAL_CATEGORY_LABEL } from './types'
 import type {
   ApiResult,
   Material,
+  MaterialCategory,
+  StockMove,
   Job,
   User,
   ConsumableLog,
@@ -26,9 +29,36 @@ function ok<T>(data: T, warning?: string): ApiResult<T> {
   return { success: true, data, error: null, warning }
 }
 function fail<T = never>(error: unknown): ApiResult<T> {
-  const msg = error instanceof Error ? error.message : String(error)
-  console.error('[MMV api]', msg)
+  const msg = errMsg(error)
+  console.error('[MMV api]', msg, error)
   return { success: false, data: null, error: msg }
+}
+
+/** Lấy câu thông báo đọc được từ một lỗi bất kỳ.
+ *
+ *  Lỗi của supabase-js (PostgrestError) là object thường chứ KHÔNG phải
+ *  Error, nên `String(error)` cho ra đúng chuỗi "[object Object]" - và
+ *  đó chính là thứ hiện lên toast cho người dùng. Đọc lấy .message, kèm
+ *  .hint khi có (Postgres thường gợi ý đúng chỗ sai ở đó).
+ */
+export function errMsg(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const e = error as { message?: unknown; hint?: unknown; details?: unknown }
+    const parts = [e.message, e.hint ?? e.details]
+      .filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+    if (parts.length) return parts.join(' — ')
+  }
+  return String(error)
+}
+
+function outsidersMsg(codes: string[]) {
+  return `Phiếu có ${codes.length} mã ngoài vật tư tiêu hao (${codes.join(', ')}), chỉ admin được duyệt.`
+}
+
+function notConsumableMsg(code: string, category: MaterialCategory) {
+  return `Mã ${code} không phải vật tư tiêu hao (${MATERIAL_CATEGORY_LABEL[category] ?? category}). `
+    + 'Chỉ admin nhập/xuất được ở màn Nhập/Xuất kho.'
 }
 
 // =====================================================================
@@ -51,16 +81,66 @@ export async function getMaterials(category?: string): Promise<ApiResult<Materia
   }
 }
 
+/** Danh mục cho màn Lấy vật tư của KTV.
+ *
+ *  CHỈ trả về category = 'consumable'. Trước đây hàm này lọc kiểu loại
+ *  trừ (`category !== 'roll'`, tức "mọi thứ không phải cuộn"), chấp
+ *  nhận được khi danh mục chỉ có 35 mã. Từ khi nạp đủ 1466 mã 'general'
+ *  từ Material.xlsx thì cách lọc đó đổ cả kho lên màn hình KTV - và
+ *  quan trọng hơn, cho phép KTV tự xuất hàng ngoài tiêu hao, đúng thứ
+ *  chỉ admin được làm. Danh sách cho phép, không phải danh sách loại trừ.
+ */
 export async function getConsumableMaterials(): Promise<ApiResult<Material[]>> {
   if (!isSupabaseConfigured) {
-    return ok(mock.materials.filter(m => m.category !== 'roll').sort((a, b) => (a.description_vi ?? '').localeCompare(b.description_vi ?? '')))
+    return ok(mock.materials.filter(m => m.category === 'consumable').sort((a, b) => (a.description_vi ?? '').localeCompare(b.description_vi ?? '')))
   }
   try {
     const { data, error } = await supabase
       .from('materials')
       .select('*')
-      .neq('category', 'roll')
+      .eq('category', 'consumable')
       .order('description_vi')
+    if (error) throw error
+    return ok(data ?? [])
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+/** Tìm vật tư theo mã / tên, dùng cho màn Nhập/Xuất kho của admin.
+ *
+ *  Danh mục có 1501 mã nên màn đó KHÔNG tải hết về rồi lọc ở client như
+ *  Tồn kho đang làm; lọc ngay phía Supabase và cắt bớt bằng `limit`.
+ */
+export async function searchMaterials(
+  keyword: string,
+  opts?: { category?: MaterialCategory; limit?: number }
+): Promise<ApiResult<Material[]>> {
+  const kw = keyword.trim()
+  const limit = opts?.limit ?? 50
+
+  if (!isSupabaseConfigured) {
+    const s = kw.toLowerCase()
+    const rows = mock.materials
+      .filter(m => !opts?.category || m.category === opts.category)
+      .filter(m => !s
+        || m.code.toLowerCase().includes(s)
+        || (m.description ?? '').toLowerCase().includes(s)
+        || (m.description_vi ?? '').toLowerCase().includes(s))
+      .sort((a, b) => a.code.localeCompare(b.code))
+    return ok(rows.slice(0, limit))
+  }
+  try {
+    let q = supabase.from('materials').select('*').order('code').limit(limit)
+    if (opts?.category) q = q.eq('category', opts.category)
+    if (kw) {
+      // Dấu phẩy và ngoặc đơn là ký tự phân cách trong cú pháp or() của
+      // PostgREST, lọt vào là hỏng cả câu truy vấn. Mô tả vật tư có cả
+      // hai (VD: 'Container strap & crimp (48 pcs/bag)') nên bỏ đi.
+      const safe = kw.replace(/[,()]/g, ' ').trim()
+      if (safe) q = q.or(`code.ilike.%${safe}%,description.ilike.%${safe}%,description_vi.ilike.%${safe}%`)
+    }
+    const { data, error } = await q
     if (error) throw error
     return ok(data ?? [])
   } catch (e) {
@@ -138,6 +218,10 @@ export async function logConsumable(
     if (!qty || qty <= 0) return fail('Số lượng phải lớn hơn 0')
     const mat = mock.getMaterial(materialCode)
     if (!mat) return fail('Không tìm thấy mã vật tư ' + materialCode)
+    // Cùng một chốt chặn với RPC log_consumable: chỉ vật tư tiêu hao đi
+    // qua đường này. Hàng 'general' do admin nhập/xuất ở màn Nhập/Xuất
+    // kho, 'roll' thì ở màn Cắt cuộn.
+    if (mat.category !== 'consumable') return fail(notConsumableMsg(materialCode, mat.category))
     const log = mock.addLog(userId, materialCode, qty, jobCode, notes, occurredAt)
     const warning = mat.closing_qty < 0 ? `TỒN ÂM: ${mat.description_vi} còn ${mat.closing_qty} ${mat.unit}` : undefined
     return ok({ log, closing_qty: mat.closing_qty }, warning)
@@ -201,6 +285,10 @@ export async function logManualConsumable(
     has_expiry: false,
     expiry_date: null,
     unit_price: 0,
+    location: null,
+    mat_type: null,
+    remark: null,
+    stock_status: null,
   }
 
   if (!isSupabaseConfigured) {
@@ -440,11 +528,28 @@ export async function nextVoucherNo(): Promise<string> {
 // =====================================================================
 //  3. confirmVoucher - duyệt phiếu -> ghi movements + trừ/cộng kho
 // =====================================================================
-export async function confirmVoucher(voucherId: number): Promise<ApiResult<Voucher>> {
+/** Duyệt phiếu và trừ/cộng kho.
+ *
+ *  `actorRole` là vai trò của người đang bấm duyệt. Phiếu có dòng nào
+ *  trỏ tới vật tư ngoài tiêu hao thì chỉ admin được duyệt - chặn ở đây
+ *  và chặn lại lần nữa trong RPC confirm_voucher. Bỏ trống thì không
+ *  kiểm, giữ nguyên hành vi cũ cho các chỗ gọi chưa cập nhật.
+ */
+export async function confirmVoucher(voucherId: number, actorRole?: string): Promise<ApiResult<Voucher>> {
   if (!isSupabaseConfigured) {
     const voucher = mock.vouchers.find(v => v.id === voucherId)
     if (!voucher) return fail('Không tìm thấy phiếu')
     if (voucher.status === 'confirmed') return fail('Phiếu đã duyệt rồi')
+
+    if (actorRole && actorRole !== 'admin') {
+      const outsiders = mock.voucherItems
+        .filter((i: any) => i.voucher_id === voucherId)
+        .map((i: any) => mock.getMaterial(i.material_code))
+        .filter((m): m is Material => !!m && m.category !== 'consumable')
+        .map(m => m.code)
+      if (outsiders.length) return fail(outsidersMsg(outsiders))
+    }
+
     voucher.status = 'confirmed'
     const items = mock.voucherItems.filter((i: any) => i.voucher_id === voucherId)
     items.forEach((item: any) => {
@@ -482,6 +587,7 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
     // trùng, và cộng trừ tồn kho là phép nguyên tử thay vì đọc-rồi-ghi-đè.
     const { data, error } = await supabase.rpc('confirm_voucher', {
       p_voucher_id: voucherId,
+      p_actor_role: actorRole ?? null,
     })
     if (error) throw error
 
@@ -494,16 +600,171 @@ export async function confirmVoucher(voucherId: number): Promise<ApiResult<Vouch
 }
 
 // =====================================================================
+//  3b. NHẬP/XUẤT VẬT TƯ NGOÀI TIÊU HAO - chỉ admin
+//
+//  Vật tư 'general' (1466 mã từ Material.xlsx) không đi qua màn Lấy vật
+//  tư của KTV và phần lớn không cần phiếu IN/OUT đầy đủ. Admin nhập/xuất
+//  thẳng ở màn Nhập/Xuất kho (src/pages/Stock.tsx).
+//
+//  Quyền được chặn ở BA lớp, vì app đăng nhập bằng bảng users chứ không
+//  dùng Supabase Auth nên không lớp nào tự nó đủ:
+//    1. route + nav trong App.tsx / Layout.tsx  - ẩn màn hình
+//    2. logStockMove ở đây                      - chặn lệnh gọi
+//    3. RPC log_stock_move trong schema.sql     - chặn phía database
+// =====================================================================
+
+/** Admin nhập (IN) hoặc xuất (OUT) thẳng một mã vật tư.
+ *
+ *  Ghi đủ ba thứ như mọi luồng chạm tồn kho: chứng từ gốc (stock_moves),
+ *  materials.closing_qty, và một dòng sổ cái movements. Tồn âm được phép
+ *  và trả về qua `warning`, không chặn - giống logConsumable.
+ */
+export async function logStockMove(
+  userId: number,
+  materialCode: string,
+  type: VoucherType,
+  qty: number,
+  opts?: {
+    jobCode?: string | null
+    vessel?: string | null
+    note?: string | null
+    userName?: string | null
+    actorRole?: string
+  }
+): Promise<ApiResult<{ move: StockMove; closing_qty: number }>> {
+  if (opts?.actorRole && opts.actorRole !== 'admin') {
+    return fail('Chỉ admin được nhập/xuất vật tư ngoài tiêu hao')
+  }
+  if (!qty || qty <= 0) return fail('Số lượng phải lớn hơn 0')
+  if (type !== 'IN' && type !== 'OUT') return fail('Loại phiếu phải là IN hoặc OUT')
+
+  if (!isSupabaseConfigured) {
+    const res = mock.addStockMove(userId, materialCode, type, qty, {
+      jobCode: opts?.jobCode ?? null,
+      vessel: opts?.vessel ?? null,
+      note: opts?.note ?? null,
+    })
+    if (!res) return fail('Không tìm thấy mã vật tư ' + materialCode)
+    const mat = mock.getMaterial(materialCode)!
+    const warning = res.closing_qty < 0
+      ? `TỒN ÂM: ${mat.description_vi ?? mat.description ?? materialCode} còn ${res.closing_qty} ${mat.unit ?? ''}`
+      : undefined
+    return ok(res, warning)
+  }
+  try {
+    // Ba lệnh ghi nằm trong một transaction phía Postgres - xem hàm
+    // log_stock_move trong supabase/schema.sql.
+    const { data, error } = await supabase.rpc('log_stock_move', {
+      p_user_id: userId,
+      p_material_code: materialCode,
+      p_type: type,
+      p_qty: qty,
+      p_job_code: opts?.jobCode ?? null,
+      p_vessel: opts?.vessel ?? null,
+      p_note: opts?.note ?? null,
+      p_user_name: opts?.userName ?? null,
+      p_actor_role: opts?.actorRole ?? null,
+    })
+    if (error) throw error
+
+    const res = data as { move: StockMove; closing_qty: number; warning: string | null }
+    return ok({ move: res.move, closing_qty: res.closing_qty }, res.warning ?? undefined)
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+/** Các lần nhập/xuất gần nhất, kèm tên hàng - cho bảng dưới màn Nhập/Xuất kho. */
+export async function getStockMoves(limit = 30): Promise<ApiResult<(StockMove & { material?: Material })[]>> {
+  if (!isSupabaseConfigured) {
+    const rows = [...mock.stockMoves]
+      .reverse()
+      .slice(0, limit)
+      .map(mv => ({ ...mv, material: mock.getMaterial(mv.material_code ?? '') }))
+    return ok(rows)
+  }
+  try {
+    const { data, error } = await supabase
+      .from('stock_moves')
+      .select('*, material:materials(*)')
+      .order('timestamp', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return ok((data ?? []) as (StockMove & { material?: Material })[])
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+/** Đổi nhóm của một mã vật tư (admin).
+ *
+ *  Đây là cách duy nhất trong app để một mã 'general' trở thành vật tư
+ *  tiêu hao cho KTV tự lấy, và ngược lại. Đổi sang 'consumable' mà
+ *  min_stock đang là 0 thì đặt luôn ngưỡng mặc định, nếu không mã đó sẽ
+ *  không bao giờ xuất hiện trong cảnh báo tồn thấp.
+ */
+export async function updateMaterialCategory(
+  code: string,
+  category: MaterialCategory,
+  opts?: { actorRole?: string }
+): Promise<ApiResult<Material>> {
+  if (opts?.actorRole && opts.actorRole !== 'admin') {
+    return fail('Chỉ admin được đổi nhóm vật tư')
+  }
+
+  if (!isSupabaseConfigured) {
+    const mat = mock.getMaterial(code)
+    if (!mat) return fail('Không tìm thấy mã vật tư ' + code)
+    mat.category = category
+    if (category !== 'general' && Number(mat.min_stock) <= 0) mat.min_stock = 20
+    if (category === 'general') mat.min_stock = 0
+    return ok(mat)
+  }
+  try {
+    const { data: cur, error: e1 } = await supabase
+      .from('materials')
+      .select('min_stock')
+      .eq('code', code)
+      .maybeSingle()
+    if (e1) throw e1
+    if (!cur) throw new Error('Không tìm thấy mã vật tư ' + code)
+
+    const patch: { category: MaterialCategory; min_stock?: number } = { category }
+    if (category === 'general') patch.min_stock = 0
+    else if (Number(cur.min_stock) <= 0) patch.min_stock = 20
+
+    const { data, error } = await supabase
+      .from('materials')
+      .update(patch)
+      .eq('code', code)
+      .select()
+      .single()
+    if (error) throw error
+    return ok(data as Material)
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+// =====================================================================
 //  4. getStockAlerts - hàng tồn thấp
 // =====================================================================
+/** Hàng tồn thấp - chỉ xét mã CÓ theo dõi đặt hàng lại (min_stock > 0).
+ *
+ *  1466 mã 'general' nạp từ Material.xlsx để min_stock = 0, trong đó
+ *  889 mã tồn bằng 0 (hàng đã hết từ lâu, không đặt lại). Không lọc thì
+ *  Dashboard và Trang chủ báo động gần 900 mã, chôn mất vài mã tiêu hao
+ *  thật sự cần mua.
+ */
 export async function getStockAlerts(threshold = 20): Promise<ApiResult<Material[]>> {
   if (!isSupabaseConfigured) {
-    return ok(mock.materials.filter(m => Number(m.closing_qty) <= threshold).sort((a, b) => Number(a.closing_qty) - Number(b.closing_qty)))
+    return ok(mock.materials.filter(m => Number(m.min_stock) > 0 && Number(m.closing_qty) <= threshold).sort((a, b) => Number(a.closing_qty) - Number(b.closing_qty)))
   }
   try {
     const { data, error } = await supabase
       .from('materials')
       .select('*')
+      .gt('min_stock', 0)
       .lte('closing_qty', threshold)
       .order('closing_qty', { ascending: true })
     if (error) throw error

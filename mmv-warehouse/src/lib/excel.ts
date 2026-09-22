@@ -80,10 +80,15 @@ export function buildMaterialWorkbook(
     const beginning = closing - receipt + issue
     aoa.push([
       i + 1,
-      '',
-      m.category ?? '',
-      '',
-      '',
+      // Location / Type / Remark / Status lấy nguyên từ bảng materials,
+      // là bốn cột nạp về từ Material.xlsx của kho - nhờ vậy bản export
+      // dựng lại đúng file gốc. Trước đây cột Type ghi m.category
+      // ('consumable' / 'roll'), không phải nhóm hàng như trong file gốc,
+      // và ba cột kia luôn để trống.
+      m.location ?? '',
+      m.mat_type ?? '',
+      m.remark ?? '',
+      m.stock_status ?? '',
       m.code,
       m.description ?? m.description_vi ?? '',
       m.unit ?? '',

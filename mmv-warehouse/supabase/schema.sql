@@ -4,6 +4,7 @@
 -- =====================================================================
 
 -- Xoá bảng cũ (nếu chạy lại) - theo thứ tự phụ thuộc
+drop table if exists stock_moves cascade;
 drop table if exists roll_cuts cascade;
 drop table if exists roll_tracking cascade;
 drop table if exists movements cascade;
@@ -23,13 +24,23 @@ create table materials (
   description   text,
   description_vi text,
   unit          text,
-  category      text default 'general',
-  min_stock     int default 20,
+  -- category quyết định AI được phép nhập/xuất mã này:
+  --   'consumable' - vật tư tiêu hao, KTV tự lấy ở màn Lấy vật tư
+  --   'roll'       - cuộn dài cắt dần, ở màn Cắt cuộn
+  --   'general'    - mọi thứ còn lại, CHỈ ADMIN nhập/xuất (màn /stock)
+  category      text default 'general' check (category in ('consumable','roll','general')),
+  min_stock     int default 20,   -- 0 = không theo dõi đặt hàng lại
   closing_qty   numeric default 0,
   lead_time_days int default 60,
   has_expiry    boolean default false,
   expiry_date   date,            -- HSD (dùng cho cảnh báo hạn sử dụng)
   unit_price    numeric default 0, -- đơn giá (dùng tính cost theo JOB)
+  -- Bốn cột dưới đây lấy nguyên từ file Material.xlsx của kho, để bản
+  -- Export Material dựng lại được đúng file gốc (xem src/lib/excel.ts).
+  location      text,            -- cột Location - vị trí kệ, VD 'D2.3.1', 'STORE 2'
+  mat_type      text,            -- cột Type - nhóm/hãng, VD 'VIK', 'ZODI', 'RFD'
+  remark        text,            -- cột Remark
+  stock_status  text,            -- cột Status - 'fast' | 'normal' | 'low' | 'no' ...
   created_at    timestamptz default now()
 );
 
@@ -150,6 +161,26 @@ create table roll_cuts (
 );
 
 -- ---------------------------------------------------------------------
+-- 10. stock_moves - admin nhập/xuất thẳng vật tư ngoài tiêu hao
+--
+-- Vật tư 'general' (1466 mã trong Material.xlsx) không đi qua màn Lấy
+-- vật tư của KTV và cũng không cần phiếu IN/OUT đầy đủ. Admin nhập/xuất
+-- thẳng ở màn /stock, mỗi lần ghi một dòng ở đây làm chứng từ gốc, rồi
+-- log_stock_move cộng trừ materials.closing_qty và ghi movements.
+-- ---------------------------------------------------------------------
+create table stock_moves (
+  id            serial primary key,
+  user_id       int references users(id),
+  material_code text references materials(code),
+  type          text check (type in ('IN','OUT')),
+  qty           numeric not null,
+  job_code      text,
+  vessel        text,
+  note          text,
+  timestamp     timestamptz default now()
+);
+
+-- ---------------------------------------------------------------------
 -- Indexes cho truy vấn nhanh
 -- ---------------------------------------------------------------------
 create index idx_clogs_user     on consumable_logs(user_id);
@@ -161,6 +192,9 @@ create index idx_movements_job  on movements(job_code);
 create index idx_vitems_voucher on voucher_items(voucher_id);
 create index idx_vouchers_no    on vouchers(voucher_no);
 create index idx_materials_cat  on materials(category);
+create index idx_materials_type on materials(mat_type);
+create index idx_smoves_code    on stock_moves(material_code);
+create index idx_smoves_ts      on stock_moves(timestamp);
 
 -- =====================================================================
 --  ROW LEVEL SECURITY
@@ -176,13 +210,14 @@ alter table voucher_items   enable row level security;
 alter table movements       enable row level security;
 alter table roll_tracking   enable row level security;
 alter table roll_cuts       enable row level security;
+alter table stock_moves     enable row level security;
 
 do $$
 declare t text;
 begin
   foreach t in array array[
     'materials','jobs','users','consumable_logs','vouchers',
-    'voucher_items','movements','roll_tracking','roll_cuts'
+    'voucher_items','movements','roll_tracking','roll_cuts','stock_moves'
   ]
   loop
     execute format(
@@ -219,13 +254,15 @@ end $$;
 --  create or replace không đổi được kiểu trả về, nên phải drop trước.
 -- =====================================================================
 drop function if exists confirm_voucher(int);
+drop function if exists confirm_voucher(int, text);
 
-create or replace function confirm_voucher(p_voucher_id int)
+create or replace function confirm_voucher(p_voucher_id int, p_actor_role text default null)
 returns jsonb
 language plpgsql
 as $$
 declare
   v            vouchers%rowtype;
+  outsiders    text[] := '{}';
   it           record;
   q            numeric;
   creator_name text;
@@ -250,6 +287,25 @@ begin
   select count(*) into n_items from voucher_items where voucher_id = p_voucher_id;
   if n_items = 0 then
     raise exception 'Phiếu chưa có dòng hàng';
+  end if;
+
+  -- Vật tư ngoài tiêu hao: chỉ admin được duyệt. p_actor_role do client
+  -- truyền vào (app đăng nhập bằng bảng users, không dùng Supabase Auth
+  -- - xem chú thích RLS ở trên), nên đây là lớp chặn thứ hai, không
+  -- phải lớp duy nhất; lớp thứ nhất nằm ở src/lib/api.ts. Bỏ trống
+  -- p_actor_role thì giữ nguyên hành vi cũ, không kiểm.
+  if p_actor_role is not null and p_actor_role <> 'admin' then
+    select array_agg(distinct vi.material_code order by vi.material_code)
+      into outsiders
+      from voucher_items vi
+      join materials m on m.code = vi.material_code
+     where vi.voucher_id = p_voucher_id
+       and coalesce(m.category, 'general') <> 'consumable';
+
+    if array_length(outsiders, 1) > 0 then
+      raise exception 'Phiếu có % mã ngoài vật tư tiêu hao (%), chỉ admin được duyệt.',
+        array_length(outsiders, 1), array_to_string(outsiders, ', ');
+    end if;
   end if;
 
   -- Tên người thực hiện: ưu tiên tên trong bảng users, không có thì lấy
@@ -348,7 +404,7 @@ begin
 end;
 $$;
 
-grant execute on function confirm_voucher(int) to anon, authenticated;
+grant execute on function confirm_voucher(int, text) to anon, authenticated;
 
 -- =====================================================================
 --  RPC: log_roll_cut - ghi một lần cắt cuộn trong MỘT transaction
@@ -502,6 +558,15 @@ begin
     raise exception 'Không tìm thấy mã vật tư %', p_material_code;
   end if;
 
+  -- Chỉ vật tư tiêu hao mới đi qua đường này. Vật tư 'general' (hàng
+  -- ngoài tiêu hao) do admin nhập/xuất ở màn /stock, 'roll' thì ở màn
+  -- Cắt cuộn. Chặn ngay tại đây để một lệnh gọi sai - dù từ UI cũ còn
+  -- cache hay từ khoá anon - không lặng lẽ trừ kho hàng ngoài tiêu hao.
+  if coalesce(m.category, 'general') <> 'consumable' then
+    raise exception 'Mã % không phải vật tư tiêu hao (nhóm %). Chỉ admin nhập/xuất được ở màn Nhập/Xuất kho.',
+      p_material_code, coalesce(m.category, 'general');
+  end if;
+
   insert into consumable_logs (user_id, material_code, qty, job_code, notes, timestamp)
   values (p_user_id, p_material_code, p_qty, p_job_code, p_notes, ts)
   returning * into lg;
@@ -602,6 +667,102 @@ end;
 $$;
 
 grant execute on function log_manual_consumable(int, text, text, text, numeric, text, text, timestamptz) to anon, authenticated;
+
+-- =====================================================================
+--  RPC: log_stock_move - admin nhập/xuất vật tư NGOÀI tiêu hao
+--
+--  Vật tư 'general' không đi qua màn Lấy vật tư của KTV và phần lớn
+--  không cần phiếu IN/OUT đầy đủ (phiếu dùng cho hàng giao khách, có
+--  số phiếu, có người nhận, in ra ký). Admin cần một đường ngắn: chọn
+--  mã, gõ số lượng, xong.
+--
+--  Vẫn là ba lệnh ghi bắt buộc của mọi luồng chạm tồn kho, gộp trong
+--  MỘT transaction, đúng như log_consumable và log_roll_cut:
+--    1. insert stock_moves          - chứng từ gốc
+--    2. update materials.closing_qty - cộng trừ nguyên tử
+--    3. insert movements            - sổ cái cho báo cáo và Export
+--
+--  Hai điều CÓ CHỦ Ý làm giống log_consumable:
+--    - Tồn âm được phép, chỉ trả cảnh báo qua warning, không chặn.
+--    - date tính theo giờ Việt Nam ở phía server.
+--
+--  p_actor_role: lớp chặn thứ hai cho quy tắc "chỉ admin". Xem chú
+--  thích ở confirm_voucher về vì sao nó chỉ là lớp thứ hai.
+-- =====================================================================
+create or replace function log_stock_move(
+  p_user_id       int,
+  p_material_code text,
+  p_type          text,
+  p_qty           numeric,
+  p_job_code      text default null,
+  p_vessel        text default null,
+  p_note          text default null,
+  p_user_name     text default null,
+  p_actor_role    text default null
+)
+returns jsonb
+language plpgsql
+as $$
+declare
+  m           materials%rowtype;
+  mv          stock_moves%rowtype;
+  new_closing numeric;
+  warn        text;
+begin
+  if p_actor_role is not null and p_actor_role <> 'admin' then
+    raise exception 'Chỉ admin được nhập/xuất vật tư ngoài tiêu hao';
+  end if;
+  if p_type is null or p_type not in ('IN', 'OUT') then
+    raise exception 'Loại phiếu phải là IN hoặc OUT';
+  end if;
+  if p_qty is null or p_qty <= 0 then
+    raise exception 'Số lượng phải lớn hơn 0';
+  end if;
+
+  select * into m from materials where code = p_material_code for update;
+  if not found then
+    raise exception 'Không tìm thấy mã vật tư %', p_material_code;
+  end if;
+
+  insert into stock_moves (user_id, material_code, type, qty, job_code, vessel, note)
+  values (p_user_id, p_material_code, p_type, p_qty, p_job_code, p_vessel, p_note)
+  returning * into mv;
+
+  update materials
+     set closing_qty = closing_qty + case when p_type = 'IN' then p_qty else -p_qty end
+   where code = p_material_code
+  returning closing_qty into new_closing;
+
+  insert into movements (
+    source_type, source_id, date, code, description, unit,
+    receipt, issue, job_code, vessel, user_id, user_name, created_at
+  ) values (
+    'stock', mv.id,
+    (mv.timestamp at time zone 'Asia/Ho_Chi_Minh')::date,
+    p_material_code,
+    coalesce(nullif(m.description, ''), nullif(m.description_vi, '')),
+    m.unit,
+    case when p_type = 'IN' then p_qty else 0 end,
+    case when p_type = 'IN' then 0 else p_qty end,
+    p_job_code, p_vessel, p_user_id,
+    coalesce(p_user_name, (select name from users where id = p_user_id)),
+    mv.timestamp
+  );
+
+  if new_closing < 0 then
+    warn := 'TỒN ÂM: ' || coalesce(nullif(m.description_vi, ''), m.description, p_material_code)
+            || ' còn ' || new_closing || ' ' || coalesce(m.unit, '');
+  end if;
+
+  return jsonb_build_object(
+    'move', to_jsonb(mv),
+    'closing_qty', new_closing,
+    'warning', warn
+  );
+end;
+$$;
+
+grant execute on function log_stock_move(int, text, text, numeric, text, text, text, text, text) to anon, authenticated;
 
 -- =====================================================================
 --  VIEW: v_doi_soat_ton_kho - đối soát sổ cái với tồn kho

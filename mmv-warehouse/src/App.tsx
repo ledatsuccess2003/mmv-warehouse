@@ -19,6 +19,7 @@ const Vouchers = lazy(() => import('./pages/Vouchers'))
 const VoucherDetail = lazy(() => import('./pages/VoucherDetail'))
 const Movement = lazy(() => import('./pages/Movement'))
 const Inventory = lazy(() => import('./pages/Inventory'))
+const Stock = lazy(() => import('./pages/Stock'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const CostByJob = lazy(() => import('./pages/CostByJob'))
 const ReportWeekly = lazy(() => import('./pages/ReportWeekly'))
@@ -62,6 +63,14 @@ export default function App() {
       <Route
         path="/movement"
         element={<ProtectedRoute roles={['warehouse', 'manager', 'admin']}><Movement /></ProtectedRoute>}
+      />
+
+      {/* Nhap/xuat vat tu NGOAI tieu hao. Chi admin - xem chu thich dau
+          src/pages/Stock.tsx. Doi quyen o day thi doi luon mang NAV
+          trong src/components/Layout.tsx. */}
+      <Route
+        path="/stock"
+        element={<ProtectedRoute roles={['admin']}><Stock /></ProtectedRoute>}
       />
 
       <Route

@@ -8,6 +8,7 @@ This git repo (`mmv-warehouse/`) contains **two separate apps**, plus a folder-n
 
 - `mmv-warehouse/mmv-warehouse/` — the real React app (**default focus for feature work**). Yes, the name repeats; the outer folder is the git root, the inner one is the Vite project root (`package.json`, `src/`, `node_modules` all live here). Always run npm commands from this inner folder, not the git root — there is no root `package.json`.
 - `app-vat-tu-xuong.html` (git root) — a separate, older standalone tool: a single self-contained HTML file, no build step, no dependencies. It is published as a Claude.ai Artifact for shop-floor tablets; its data lives inline in a `<script id="app-state">` tag and is "deployed" by republishing the artifact, not by this repo's git history. Don't assume changes here affect the React app or vice versa — they share only the material/JOB domain, not code.
+- `Material.xlsx` (git root) — the warehouse's real material catalogue, 1501 codes, one sheet whose columns match `buildMaterialWorkbook`'s output exactly. **Untracked** (`.gitignore` excludes `*.xlsx`) and it stays that way; what's committed is the SQL generated from it, `mmv-warehouse/supabase/seed_materials.sql`, via `scripts/gen_seed_materials.py`. So the file has to be present locally to regenerate that seed — don't assume a fresh clone has it.
 - `docs/ke-hoach-kho-mmv.html` — a static planning/roadmap document, not app code.
 - `README.md` (git root) — documents only the standalone HTML tool (accounts, roles, Excel export format, known limitations). It predates the React app and says nothing about it.
 
@@ -66,7 +67,25 @@ useEffect(() => {
 2. `update materials.closing_qty` with a read-modify-write,
 3. insert a row into `movements` (the append-only ledger that feeds reports and Excel export).
 
-So `movements` is populated only by application code, and a partial failure leaves stock and ledger out of sync. Any new flow that moves stock must replicate all three writes — in both the Supabase and mock branches. Negative stock is allowed and surfaced via `ApiResult.warning` ("TỒN ÂM"), not blocked.
+So `movements` is populated only by application code. Any new flow that moves stock must replicate all three writes — in both the Supabase and mock branches. Negative stock is allowed and surfaced via `ApiResult.warning` ("TỒN ÂM"), not blocked.
+
+Since the RPC work (commits `9066481`…`2e8ad35`) the Supabase side of each flow is a single `create or replace function` in `schema.sql` that wraps all three writes in one transaction — `log_consumable`, `log_manual_consumable`, `log_roll_cut`, `confirm_voucher`, `log_stock_move`. The client just calls `supabase.rpc(...)`. The **mock** branch still does the three writes by hand in `mock.ts`, so it is the one that can go out of sync; keep the two semantically identical.
+
+### Material categories are the permission axis
+
+`materials.category` is not a display grouping — it decides **who may move that stock**:
+
+| category | who moves it | where |
+|---|---|---|
+| `consumable` | any KTV | `/pick` (`logConsumable`) |
+| `roll` | any KTV | `/roll` (`logRollCut`) |
+| `general` | **admin only** | `/stock` (`logStockMove`) |
+
+`general` is the bulk of the catalogue (1466 of 1501 codes). The rule is enforced in three places and all three must agree: the `roles` prop / `NAV` entry, the API function in `api.ts`, and the RPC in `schema.sql` (which takes a `p_actor_role` argument — client-supplied, so it's a second line of defence, not the only one, consistent with the table-lookup auth described below).
+
+Two filters look similar but are not: `getMaterials(category?)` is a plain filter, while `getConsumableMaterials()` is an **allow-list** (`category = 'consumable'`). It used to be the exclusion `category != 'roll'`, which silently meant "the whole warehouse" once the full catalogue landed. Don't reintroduce exclusion filters here.
+
+`min_stock = 0` means "not tracked for reorder" — every `general` code is seeded that way, and `getStockAlerts` / `Inventory.statusOf` both skip those rows. Without that, ~900 zero-stock codes drown the real consumable alerts.
 
 ### Auth is a table lookup, not Supabase Auth
 
@@ -82,17 +101,25 @@ Roles in the React app are `ktv | warehouse | manager | sales | admin` (five —
 - `src/App.tsx` — the `roles` prop on each `<ProtectedRoute>`; `ProtectedRoute` also wraps children in `Layout`, so routes and chrome are coupled.
 - `src/components/Layout.tsx` — the `NAV` array, which filters nav links by the same role lists.
 
-Adding a page means touching both. The `isAdmin/isManager/isWarehouse` helpers on `useAuth` encode a separate, overlapping hierarchy — read them before relying on them.
+Adding a page means touching both. `src/pages/Home.tsx` has a *third* copy (the `ADMIN_LINKS` / `STAFF` arrays) — check it too. The `isAdmin/isManager/isWarehouse` helpers on `useAuth` encode a separate, overlapping hierarchy — read them before relying on them.
 
 ### Excel export
 
 `src/lib/excel.ts` builds workbooks as arrays-of-arrays with `xlsx-js-style`, applying explicit cell styles, `!cols` widths, and `!merges`; `api.ts` wraps each builder in an `export*Excel` function that calls `saveWorkbook` (file-saver). Layout is positional — title row, blank row, totals row, then the header row — so inserting a row shifts every hardcoded style reference (`A1`, `H3`, `I3`) and merge range.
 
+The **Material** export reproduces `Material.xlsx` column for column, including `Location`, `Type`, `Remark` and `Status` — which is why those four live on `materials` as `location`, `mat_type`, `remark`, `stock_status`. `Type` is the supplier/group code (VIK, ZODI, RFD…), **not** `category`; an earlier version wrote `category` into that column and left the other three blank.
+
 The **Movement** export targets the warehouse workbook's `Movement` sheet: the 12 spec columns (`ITEMS, SRV, SIV, DATE, CODE, DESCRIPTION, UNIT, RECEIPT, ISSUE, JOB CODE, VESSEL, REMAKS`) **plus a 13th, `NGUOI THUC HIEN`**, added by commit `a976237`. The 12-column form in `README.md` describes the standalone tool, not this app. `ITEMS` restarts at 1 per source voucher (grouped by `source_type:source_id`).
 
 ### Supabase schema changes
 
-There is no Supabase CLI and no migrations folder. `supabase/schema.sql` and `supabase/seed.sql` are run by hand in the Supabase SQL editor; edit them directly. A schema change means updating **three** places: the SQL file, the `Database`/entity types in `src/lib/types.ts`, and the mock fixtures in `src/lib/mock.ts`.
+There is no Supabase CLI and no migrations folder. `supabase/*.sql` are run by hand in the Supabase SQL editor; edit them directly. A schema change means updating **three** places: the SQL file, the `Database`/entity types in `src/lib/types.ts`, and the mock fixtures in `src/lib/mock.ts`.
+
+`schema.sql` opens with `drop table … cascade`, so it is **only** for building a fresh database — never tell anyone to re-run it against a live one. Changing a live database means writing a separate idempotent `migrate_*.sql` alongside it (see `migrate_2026_09_vat_tu_ngoai_tieu_hao.sql`, which `ALTER`s the columns and re-declares the changed functions) and keeping `schema.sql` as the canonical definition.
+
+Run order on a new database: `schema.sql` → `seed.sql` → `seed_materials.sql`. `seed_materials.sql` is generated, not hand-edited: it holds all 1501 codes from `Material.xlsx` and is re-runnable, with `on conflict (code) do update` touching only the xlsx-owned columns so `description_vi`, `unit_price`, `min_stock` and expiry data from `seed.sql` survive. Regenerate it with `python scripts/gen_seed_materials.py` when a new `Material.xlsx` arrives.
+
+`mock.ts` deliberately carries only a 48-code **sample** of the `general` materials, not all 1466 — the full list would ship in the production bundle for the benefit of the no-`.env` path alone.
 
 ### PWA
 
@@ -116,6 +143,7 @@ Note there are two `.claude/launch.json` files with different arg lists: the roo
 
 - **KTV** = kỹ thuật viên (workshop technician). The standalone tool has three roles (`ktv`, `kho`, `admin`); the React app has five (see above).
 - **JOB**, **Movement**, **Voucher** — warehouse transaction concepts reflected in the React app's page names (`Movement`, `Vouchers`, `Pick`, `Roll`). A *voucher* is a draft IN/OUT slip that becomes real stock only on `confirmVoucher`; a *movement* is an immutable ledger line.
+- **Stock move** (`Stock.tsx`, `stock_moves`) — an admin nhập/xuất straight onto a `general` material, with no voucher number and no printout. Vouchers stay for goods handed to a customer; stock moves are the short path for everything else.
 - **Roll** (`Roll.tsx`, `roll_tracking`/`roll_cuts`) — materials with `category = 'roll'` are cut down over time rather than issued whole; they're excluded from `getConsumableMaterials`.
 - **PR_PRO_002**, **PR_FRM_005** — internal procurement procedure/form codes referenced as the target spec the tooling is working toward (see README "Việc tiếp theo").
 

@@ -17,6 +17,7 @@ const NAV: NavItem[] = [
   { to: '/history', label: 'Lịch sử', roles: ['ktv', 'warehouse', 'manager', 'sales', 'admin'] },
   { to: '/vouchers', label: 'Phiếu', roles: ['warehouse', 'manager', 'admin'] },
   { to: '/inventory', label: 'Tồn kho', roles: ['warehouse', 'manager', 'sales', 'admin'] },
+  { to: '/stock', label: 'Nhập/Xuất kho', roles: ['admin'] },
   { to: '/movement', label: 'Movement', roles: ['warehouse', 'manager', 'admin'] },
   { to: '/dashboard', label: 'Dashboard', roles: ['manager', 'sales', 'admin'] },
   { to: '/report/weekly', label: 'Báo cáo tuần', roles: ['manager', 'sales', 'warehouse', 'admin'] },

@@ -28,10 +28,16 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
   const [rows, setRows] = useState<Row[]>([{ material_code: '' }])
   const [busy, setBusy] = useState(false)
 
+  // Goi y ma hang: admin duoc chon ca 1501 ma trong kho, cac vai tro
+  // khac chi thay vat tu tieu hao. Day chi la goi y - o ma hang van cho
+  // go tu do, va confirm_voucher moi la cho chan that: phieu co ma ngoai
+  // tieu hao thi chi admin duyet duoc.
+  const isAdmin = user.role === 'admin'
+
   useEffect(() => {
     getJobs().then((r) => r.success && r.data && setJobs(r.data))
-    getMaterials().then((r) => r.success && r.data && setMaterials(r.data))
-  }, [])
+    getMaterials(isAdmin ? undefined : 'consumable').then((r) => r.success && r.data && setMaterials(r.data))
+  }, [isAdmin])
 
   const matMap = useMemo(() => {
     const m = new Map<string, Material>()
@@ -99,7 +105,7 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
     }
     const id = res.data.voucher.id
     if (confirmAfter) {
-      const c = await confirmVoucher(id)
+      const c = await confirmVoucher(id, user.role)
       if (!c.success) {
         setBusy(false)
         toast.error(c.error ?? 'Duyệt phiếu thất bại')
@@ -151,6 +157,13 @@ export default function VoucherNew({ type }: { type: VoucherType }) {
           </div>
         )}
       </div>
+
+      {!isAdmin && (
+        <p className="mb-3 rounded-xl border border-amber-300/70 bg-amber-100/50 px-4 py-3 text-base text-amber-900">
+          Gợi ý mã hàng chỉ liệt kê <b>vật tư tiêu hao</b>. Phiếu có vật tư ngoài tiêu hao
+          thì chỉ admin duyệt được — admin nhập/xuất những mã đó ở màn <b>Nhập/Xuất kho</b>.
+        </p>
+      )}
 
       {/* Bảng dòng hàng */}
       <datalist id="mat-list">

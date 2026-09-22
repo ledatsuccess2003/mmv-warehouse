@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Grab, Scissors, ClipboardList, FileText, Boxes, LayoutDashboard, BarChart3, Users } from 'lucide-react'
+import { Grab, Scissors, ClipboardList, FileText, Boxes, LayoutDashboard, BarChart3, Users, ArrowDownUp } from 'lucide-react'
 import { useAuth } from '@/store/useAuth'
 
 const BIG = [
@@ -11,6 +11,8 @@ const BIG = [
 const ADMIN_LINKS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', color: 'text-blue-600' },
   { to: '/inventory', icon: Boxes, label: 'Tồn kho', color: 'text-emerald-600' },
+  // Vat tu ngoai tieu hao - chi admin, nen chi co o day, khong co trong STAFF.
+  { to: '/stock', icon: ArrowDownUp, label: 'Nhập/Xuất kho', color: 'text-sky-600' },
   { to: '/vouchers', icon: FileText, label: 'Phiếu xuất/nhập', color: 'text-orange-600' },
   { to: '/movement', icon: BarChart3, label: 'Movement', color: 'text-violet-600' },
   { to: '/report/weekly', icon: ClipboardList, label: 'Báo cáo tuần', color: 'text-teal-600' },

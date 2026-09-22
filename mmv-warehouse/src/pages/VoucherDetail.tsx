@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Printer, FileSpreadsheet, CheckCircle2 } from 'lucide-react'
 import { getVoucher, confirmVoucher, exportVoucherExcel } from '@/lib/api'
+import { useAuth } from '@/store/useAuth'
 import { toast } from '@/store/useToast'
 import type { Voucher, VoucherItem, Material } from '@/lib/types'
 import { PageHeader } from '@/components/PageHeader'
@@ -14,6 +15,7 @@ type Item = VoucherItem & { material?: Material }
 
 export default function VoucherDetail() {
   const { id } = useParams()
+  const user = useAuth((s) => s.user)
   const [voucher, setVoucher] = useState<Voucher | null>(null)
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,7 +38,7 @@ export default function VoucherDetail() {
   async function doConfirm() {
     if (!voucher) return
     setBusy(true)
-    const res = await confirmVoucher(voucher.id)
+    const res = await confirmVoucher(voucher.id, user?.role)
     setBusy(false)
     if (!res.success) {
       toast.error(res.error ?? 'Duyệt thất bại')
