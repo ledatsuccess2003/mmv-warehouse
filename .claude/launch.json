@@ -4,8 +4,24 @@
     {
       "name": "mmv-warehouse",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "mmv-warehouse"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "mmv-warehouse"
+      ],
       "port": 5173
+    },
+    {
+      "name": "mmv-warehouse-mock",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:mock",
+        "--prefix",
+        "mmv-warehouse"
+      ],
+      "port": 5174
     }
   ]
 }

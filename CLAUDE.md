@@ -19,15 +19,37 @@ React app (from the git root, matching `start-warehouse.bat`):
 cd mmv-warehouse
 npm install   # first time only
 npm run dev         # vite dev server, port 5173, host: true (LAN/phone access)
+npm run dev:mock    # nhu tren nhung CHE DO MOC, port 5174 (xem duoi)
 npm run build       # tsc -b && vite build
 npm run preview     # vite preview --host, port 4173
 npm run typecheck   # tsc --noEmit
 npm run lint        # eslint . (flat config: eslint.config.js)
 npm run lint:fix    # eslint . --fix
+npm run test        # vitest run (chay mot lan)
+npm run test:watch  # vitest (watch mode)
 ```
-There is **no CI and no test framework** — don't invent test commands or assume one exists. `npm run typecheck && npm run lint` is the only automated safety net; the `typecheck` skill (`.claude/skills/typecheck/`) wraps it. Run it before calling a React-app change done.
+There is **no CI** — nothing runs these for you. `npm run typecheck && npm run lint && npm run test` is the whole safety net; the `typecheck` skill (`.claude/skills/typecheck/`) wraps it. Run it before calling a React-app change done.
+
+### Tests
+
+Vitest, configured in the `test` block of `vite.config.ts` — deliberately **not** a separate `vitest.config.ts`, so the `@` alias stays declared in one place instead of three (it is already duplicated across `vite.config.ts` and `tsconfig.json`).
+
+Scope is the data layer only: `src/lib/*.test.ts`, `environment: 'node'`, no jsdom, no testing-library, no component rendering. Adding a component test means adding those dependencies — decide that deliberately rather than drifting into it.
+
+Two things every `api.*.test.ts` must do, and both matter:
+
+1. **`vi.mock('@/lib/supabase')`** returning `isSupabaseConfigured: false` plus a `supabase` Proxy that throws on any property access. Dev machines have a real `.env`, and a test that slips into the Supabase branch writes to the **live company warehouse**. `vite.config.ts` also blanks the `VITE_*` vars for test runs; that is the belt, this is the braces.
+2. **`vi.resetModules()` + re-import inside `beforeEach`.** `store` in `mock.ts` is module-level mutable state, and `materials: [...MATERIALS]` is a *shallow* copy — the material objects are shared with the source array, so one test's stock change leaks into the next. Re-importing the module is what gives each test a clean warehouse.
+
+These tests only ever exercise the **mock** branch. Every API function's Supabase branch is a `supabase.rpc(...)` into a function in `schema.sql` that they cannot reach. A green suite proves the mock branch and the rule it encodes — not the RPC. Change a permission rule and you must change it in both places by hand.
+
+`src/test/setup.ts` swallows `console.error('[MMV api]', …)` and nothing else. Most tests here fail on purpose (wrong role, wrong quantity, unknown code) and `fail()` logs every one; other `console.error` output still comes through.
 
 `no-explicit-any` and `exhaustive-deps` are `warn` (not `error`) on purpose — see the comments in `eslint.config.js`. The Supabase API layer (`src/lib/api.ts`) uses `any` pragmatically and pages use `useEffect(() => { load() }, [...])` throughout; don't "fix" these opportunistically unless asked.
+
+`npm run dev:mock` runs the same app against the in-memory fixtures in `src/lib/mock.ts` instead of Supabase, on port 5174 — so both can run at once. It works by pointing Vite's `envDir` at the git root (which has no `.env`), so `isSupabaseConfigured` comes out false; it never reads, renames or deletes the real `mmv-warehouse/.env`. Config is `vite.config.mock.ts`.
+
+This exists because the mock branch is otherwise unreachable on any machine that has been set up: `.env` is present, so Supabase always wins, and the branch nobody can run is the branch that rots. Use it to exercise write flows without touching the live warehouse. Caveat: the mock store is in-memory, so a **full page load wipes it** — navigate inside the app (click the nav) to keep state across screens.
 
 Standalone HTML tool: open `app-vat-tu-xuong.html` directly in a browser, or run `start-web.bat` (serves it via `server.ps1` on port 8080 for LAN/tablet access).
 
