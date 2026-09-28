@@ -1,19 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 import { readSupabaseConfig } from '../../config/supabase-env.mjs'
 
-// An explicit demo build must never use the real project from a local .env.
-const config = readSupabaseConfig(import.meta.env.MODE === 'demo' ? {} : import.meta.env)
+// Không có chế độ dữ liệu mẫu: thiếu hoặc sai cấu hình thì App hiện màn hình
+// ConfigurationRequired, không làm gì khác. Bản build production thì bị
+// vite.config.ts chặn từ trước (assertSupabaseBuildConfig).
+const config = readSupabaseConfig(import.meta.env)
 export const isSupabaseConfigured = config.isConfigured
 export const configurationErrors = config.errors
-export const isDemoMode = !isSupabaseConfigured && (import.meta.env.DEV || import.meta.env.MODE === 'demo')
 export const authStorageKey = isSupabaseConfigured
   ? `mmv.auth.supabase:${new URL(config.url).origin}`
-  : 'mmv.auth.demo'
+  : 'mmv.auth.unconfigured'
 
 if (!isSupabaseConfigured) {
-  console.warn('[MMV] ' + config.errors.join(' ') + (isDemoMode
-    ? ' Đang dùng dữ liệu mẫu; thay đổi không được lưu lên kho chung.'
-    : ' Ứng dụng tạm dừng để tránh ghi nhận bằng dữ liệu mẫu.'))
+  console.error('[MMV] ' + config.errors.join(' ') + ' Ứng dụng tạm dừng cho tới khi cấu hình xong.')
 }
 
 // A valid inert client keeps imports safe. App blocks routes when configuration is invalid.

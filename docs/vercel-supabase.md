@@ -15,7 +15,7 @@
 - Mở lại website và xem Console: không còn cảnh báo `[MMV]` về thiếu cấu hình.
 - Tại màn hình chọn nhân viên, Network phải có request tới `<Project URL>/rest/v1/users` và nhận phản hồi thành công. Có request chưa đủ: kiểm tra HTTP status và nội dung phản hồi. Danh sách rỗng có thể là dữ liệu chưa được nạp hoặc policy chưa phù hợp.
 - Nếu request lỗi, xử lý URL/key/schema/policy tương ứng. Không chuyển sang dữ liệu mẫu để che lỗi.
-- Sau khi chuyển từ demo sang Supabase hoặc đổi project, chọn lại người dùng. Phiên dùng thử không được dùng làm danh tính trong kho thật.
+- Sau khi đổi project Supabase, chọn lại người dùng: phiên đăng nhập được lưu riêng theo từng project.
 
 ## Chạy và kiểm thử cục bộ
 
@@ -25,8 +25,8 @@ npm run test:config
 npm run build
 ```
 
-`npm run dev` cho phép thử giao diện với dữ liệu mẫu nếu chưa có cấu hình hợp lệ. `npm run build:demo` tạo bản xem thử cục bộ. Cả hai hiển thị thông báo dữ liệu mẫu, không lưu lên kho chung. Vercel từ chối chế độ build demo.
+Ứng dụng không còn chế độ dữ liệu mẫu. Thiếu cấu hình thì `npm run build` thất bại và `npm run dev` chỉ hiện màn hình "Chưa kết nối kho dữ liệu". `npm run dev` với `.env` hợp lệ ghi thẳng vào kho đang dùng; cần môi trường thử thì trỏ `.env` sang một project Supabase riêng.
 
-Khi triển khai cùng bản mã mới nhất, kiểm tra backend đã có các RPC được ứng dụng gọi. Với dữ liệu đang dùng, áp dụng migration phù hợp; không chạy lại `schema.sql` vì file đó tạo mới cơ sở dữ liệu bằng cách xóa các bảng hiện có. Kiểm thử dữ liệu mẫu không xác nhận được RPC trên Supabase thật.
+Khi triển khai cùng bản mã mới nhất, kiểm tra backend đã có các RPC được ứng dụng gọi. Với dữ liệu đang dùng, áp dụng migration phù hợp; không chạy lại `schema.sql` vì file đó tạo mới cơ sở dữ liệu bằng cách xóa các bảng hiện có. Bộ test tự động không chạm tới RPC trên Supabase.
 
 Tài liệu: [Vite — Env Variables and Modes](https://vite.dev/guide/env-and-mode), [Vercel — Managing environment variables](https://vercel.com/docs/environment-variables/managing-environment-variables).

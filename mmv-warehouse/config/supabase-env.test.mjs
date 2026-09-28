@@ -92,26 +92,8 @@ test('malformed JWT-like input cannot crash validation', () => {
   assert.doesNotThrow(() => readSupabaseConfig({ ...validEnv, VITE_SUPABASE_ANON_KEY: 'header.%%%%.signature' }))
 })
 
-test('normal builds require configuration for every mode', () => {
-  for (const mode of [undefined, 'production', 'development', 'staging']) {
-    assert.throws(() => assertSupabaseBuildConfig({}, { mode }), /VITE_SUPABASE_URL/)
-    assert.throws(() => assertSupabaseBuildConfig({ ...validEnv, VITE_SUPABASE_ANON_KEY: 'sb_secret_private-test-value' }, { mode }), /service_role/)
-    assert.equal(assertSupabaseBuildConfig(validEnv, { mode }).isConfigured, true)
-  }
-})
-
-test('only explicit local demo builds may omit configuration', () => {
-  assert.equal(assertSupabaseBuildConfig({}, { mode: 'demo' }).isConfigured, false)
-  assert.equal(assertSupabaseBuildConfig({}, { mode: 'demo', vercel: false }).isConfigured, false)
-  assert.equal(assertSupabaseBuildConfig({}, { mode: 'demo', vercel: '0' }).isConfigured, false)
-  for (const vercel of [true, 1, '1', 'true']) {
-    for (const env of [{}, validEnv]) {
-      assert.throws(() => assertSupabaseBuildConfig(env, { mode: 'demo', vercel }), /demo.*Vercel/)
-    }
-  }
-})
-
-test('production builds on Vercel accept configured public credentials', () => {
-  assert.equal(assertSupabaseBuildConfig(validEnv, { mode: 'production', vercel: '1' }).isConfigured, true)
-  assert.throws(() => assertSupabaseBuildConfig({}, { mode: 'production', vercel: '1' }), /VITE_SUPABASE_URL/)
+test('every build requires valid configuration', () => {
+  assert.throws(() => assertSupabaseBuildConfig({}), /VITE_SUPABASE_URL/)
+  assert.throws(() => assertSupabaseBuildConfig({ ...validEnv, VITE_SUPABASE_ANON_KEY: 'sb_secret_private-test-value' }), /service_role/)
+  assert.equal(assertSupabaseBuildConfig(validEnv).isConfigured, true)
 })

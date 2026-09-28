@@ -2,10 +2,8 @@
 //  MMV WAREHOUSE - API layer (Supabase)
 //  Mọi hàm trả về { success, data, error }.
 // =====================================================================
-import { supabase, isSupabaseConfigured } from './supabase'
+import { supabase } from './supabase'
 import { toISODate, monthsUntil, monthRange } from './format'
-import { store as mock, USERS } from './mock'
-import { MATERIAL_CATEGORY_LABEL } from './types'
 import type {
   ApiResult,
   Material,
@@ -52,24 +50,10 @@ export function errMsg(error: unknown): string {
   return String(error)
 }
 
-function outsidersMsg(codes: string[]) {
-  return `Phiếu có ${codes.length} mã ngoài vật tư tiêu hao (${codes.join(', ')}), chỉ admin được duyệt.`
-}
-
-function notConsumableMsg(code: string, category: MaterialCategory) {
-  return `Mã ${code} không phải vật tư tiêu hao (${MATERIAL_CATEGORY_LABEL[category] ?? category}). `
-    + 'Chỉ admin nhập/xuất được ở màn Nhập/Xuất kho.'
-}
-
 // =====================================================================
 //  ĐỌC DỮ LIỆU CHUNG (cho các màn hình)
 // =====================================================================
 export async function getMaterials(category?: string): Promise<ApiResult<Material[]>> {
-  if (!isSupabaseConfigured) {
-    let mats = mock.materials
-    if (category) mats = mats.filter(m => m.category === category)
-    return ok(mats.sort((a, b) => a.code.localeCompare(b.code)))
-  }
   try {
     let q = supabase.from('materials').select('*').order('code')
     if (category) q = q.eq('category', category)
@@ -91,9 +75,6 @@ export async function getMaterials(category?: string): Promise<ApiResult<Materia
  *  chỉ admin được làm. Danh sách cho phép, không phải danh sách loại trừ.
  */
 export async function getConsumableMaterials(): Promise<ApiResult<Material[]>> {
-  if (!isSupabaseConfigured) {
-    return ok(mock.materials.filter(m => m.category === 'consumable').sort((a, b) => (a.description_vi ?? '').localeCompare(b.description_vi ?? '')))
-  }
   try {
     const { data, error } = await supabase
       .from('materials')
@@ -119,17 +100,6 @@ export async function searchMaterials(
   const kw = keyword.trim()
   const limit = opts?.limit ?? 50
 
-  if (!isSupabaseConfigured) {
-    const s = kw.toLowerCase()
-    const rows = mock.materials
-      .filter(m => !opts?.category || m.category === opts.category)
-      .filter(m => !s
-        || m.code.toLowerCase().includes(s)
-        || (m.description ?? '').toLowerCase().includes(s)
-        || (m.description_vi ?? '').toLowerCase().includes(s))
-      .sort((a, b) => a.code.localeCompare(b.code))
-    return ok(rows.slice(0, limit))
-  }
   try {
     let q = supabase.from('materials').select('*').order('code').limit(limit)
     if (opts?.category) q = q.eq('category', opts.category)
@@ -149,12 +119,6 @@ export async function searchMaterials(
 }
 
 export async function getJobs(onlyOpen = false): Promise<ApiResult<Job[]>> {
-  if (!isSupabaseConfigured) {
-    const { JOBS } = await import('./mock')
-    let jobs = [...JOBS]
-    if (onlyOpen) jobs = jobs.filter(j => j.status === 'open')
-    return ok(jobs)
-  }
   try {
     let q = supabase.from('jobs').select('*').order('job_code', { ascending: false })
     if (onlyOpen) q = q.eq('status', 'open')
@@ -167,10 +131,6 @@ export async function getJobs(onlyOpen = false): Promise<ApiResult<Job[]>> {
 }
 
 export async function getJob(jobCode: string): Promise<ApiResult<Job | null>> {
-  if (!isSupabaseConfigured) {
-    const { JOBS } = await import('./mock')
-    return ok(JOBS.find(j => j.job_code === jobCode) ?? null)
-  }
   try {
     const { data, error } = await supabase
       .from('jobs')
@@ -185,12 +145,6 @@ export async function getJob(jobCode: string): Promise<ApiResult<Job | null>> {
 }
 
 export async function getUsers(role?: string): Promise<ApiResult<User[]>> {
-  if (!isSupabaseConfigured) {
-    const { USERS } = await import('./mock')
-    let users = USERS.filter(u => u.active)
-    if (role) users = users.filter(u => u.role === role)
-    return ok(users.sort((a, b) => a.name.localeCompare(b.name)))
-  }
   try {
     let q = supabase.from('users').select('*').eq('active', true).order('name')
     if (role) q = q.eq('role', role)
@@ -214,18 +168,6 @@ export async function logConsumable(
   userName?: string,
   occurredAt?: string
 ): Promise<ApiResult<{ log: ConsumableLog; closing_qty: number }>> {
-  if (!isSupabaseConfigured) {
-    if (!qty || qty <= 0) return fail('Số lượng phải lớn hơn 0')
-    const mat = mock.getMaterial(materialCode)
-    if (!mat) return fail('Không tìm thấy mã vật tư ' + materialCode)
-    // Cùng một chốt chặn với RPC log_consumable: chỉ vật tư tiêu hao đi
-    // qua đường này. Hàng 'general' do admin nhập/xuất ở màn Nhập/Xuất
-    // kho, 'roll' thì ở màn Cắt cuộn.
-    if (mat.category !== 'consumable') return fail(notConsumableMsg(materialCode, mat.category))
-    const log = mock.addLog(userId, materialCode, qty, jobCode, notes, occurredAt)
-    const warning = mat.closing_qty < 0 ? `TỒN ÂM: ${mat.description_vi} còn ${mat.closing_qty} ${mat.unit}` : undefined
-    return ok({ log, closing_qty: mat.closing_qty }, warning)
-  }
   try {
     // Kiểm luôn ở client để phản hồi ngay; hàm SQL cũng kiểm lại.
     if (!qty || qty <= 0) throw new Error('Số lượng phải lớn hơn 0')
@@ -273,32 +215,6 @@ export async function logManualConsumable(
   if (!cleanUnit) return fail('Hãy nhập đơn vị tính')
 
   const code = `CHUA-CO-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.toUpperCase()
-  const material: Omit<Material, 'id' | 'created_at'> = {
-    code,
-    description: cleanName,
-    description_vi: cleanName,
-    unit: cleanUnit,
-    category: 'consumable',
-    min_stock: 0,
-    closing_qty: 0,
-    lead_time_days: 0,
-    has_expiry: false,
-    expiry_date: null,
-    unit_price: 0,
-    location: null,
-    mat_type: null,
-    remark: null,
-    stock_status: null,
-  }
-
-  if (!isSupabaseConfigured) {
-    mock.materials.push({
-      ...material,
-      id: Math.max(0, ...mock.materials.map((m) => m.id)) + 1,
-      created_at: new Date().toISOString(),
-    })
-    return logConsumable(userId, code, qty, jobCode, 'Vật tư nhập tay - chưa có trong danh mục', userName, occurredAt)
-  }
 
   try {
     // Tạo mã vật tư và ghi nhật ký nằm chung MỘT transaction - xem hàm
@@ -330,10 +246,6 @@ export async function logManualConsumable(
 
 /** Nhật ký hôm nay của 1 KTV (kèm tên hàng) */
 export async function getTodayLogs(userId: number): Promise<ApiResult<(ConsumableLog & { material?: Material })[]>> {
-  if (!isSupabaseConfigured) {
-    const logs = mock.getTodayLogs().filter(l => l.user_id === userId)
-    return ok(logs.map(l => ({ ...l, material: mock.getMaterial(l.material_code ?? '') })).reverse() as any)
-  }
   try {
     const start = toISODate() + 'T00:00:00'
     const { data, error } = await supabase
@@ -354,15 +266,6 @@ export async function updateConsumableLog(
   logId: number,
   newQty: number
 ): Promise<ApiResult<ConsumableLog>> {
-  if (!isSupabaseConfigured) {
-    const log = mock.logs.find(l => l.id === logId)
-    if (!log) return fail('Không tìm thấy nhật ký')
-    const diff = newQty - log.qty
-    log.qty = newQty
-    const mat = mock.getMaterial(log.material_code ?? '')
-    if (mat) mat.closing_qty -= diff
-    return ok(log)
-  }
   try {
     const { data: log, error: e1 } = await supabase
       .from('consumable_logs')
@@ -409,40 +312,6 @@ export async function createVoucher(
   type: VoucherType,
   data: CreateVoucherData
 ): Promise<ApiResult<{ voucher: Voucher; items: VoucherItem[] }>> {
-  if (!isSupabaseConfigured) {
-    const d = new Date()
-    const prefix = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0')
-    const seq = String(mock.nextVoucherId).padStart(3, '0')
-    const voucher: Voucher = {
-      id: mock.nextVoucherId++,
-      voucher_no: prefix + seq,
-      type,
-      date: data.date,
-      receiver: data.receiver ?? null,
-      supplier: data.supplier ?? null,
-      vessel: data.vessel ?? null,
-      job_code: data.job_code ?? null,
-      status: 'draft',
-      created_by: data.created_by ?? null,
-      created_at: new Date().toISOString(),
-    }
-    mock.vouchers.push(voucher)
-    const items: VoucherItem[] = data.items.map((item, i) => {
-      const vi: VoucherItem = {
-        id: mock.nextVoucherItemId++,
-        voucher_id: voucher.id,
-        material_code: item.material_code,
-        description: item.description ?? null,
-        qty_theory: item.qty_theory ?? null,
-        qty_actual: item.qty_actual ?? null,
-        unit: item.unit ?? null,
-        remarks: item.remarks ?? null,
-      }
-      mock.voucherItems.push(vi)
-      return vi
-    })
-    return ok({ voucher, items })
-  }
   try {
     // nextVoucherNo() đọc số lớn nhất trong tháng rồi +1, nên hai người
     // tạo phiếu cùng lúc sẽ đọc ra cùng một số. Cột voucher_no có ràng
@@ -536,49 +405,6 @@ export async function nextVoucherNo(): Promise<string> {
  *  kiểm, giữ nguyên hành vi cũ cho các chỗ gọi chưa cập nhật.
  */
 export async function confirmVoucher(voucherId: number, actorRole?: string): Promise<ApiResult<Voucher>> {
-  if (!isSupabaseConfigured) {
-    const voucher = mock.vouchers.find(v => v.id === voucherId)
-    if (!voucher) return fail('Không tìm thấy phiếu')
-    if (voucher.status === 'confirmed') return fail('Phiếu đã duyệt rồi')
-
-    if (actorRole && actorRole !== 'admin') {
-      const outsiders = mock.voucherItems
-        .filter((i: any) => i.voucher_id === voucherId)
-        .map((i: any) => mock.getMaterial(i.material_code))
-        .filter((m): m is Material => !!m && m.category !== 'consumable')
-        .map(m => m.code)
-      if (outsiders.length) return fail(outsidersMsg(outsiders))
-    }
-
-    voucher.status = 'confirmed'
-    const items = mock.voucherItems.filter((i: any) => i.voucher_id === voucherId)
-    items.forEach((item: any) => {
-      const qty = Number(item.qty_actual) || Number(item.qty_theory) || 0
-      if (qty <= 0) return
-      const mat = mock.getMaterial(item.material_code)
-      if (mat) {
-        if (voucher.type === 'OUT') mat.closing_qty -= qty
-        else mat.closing_qty += qty
-      }
-      mock.movements.push({
-        id: mock.nextMovId++,
-        source_type: 'voucher',
-        source_id: voucher.id,
-        date: voucher.date,
-        code: item.material_code ?? '',
-        description: mat?.description_vi ?? mat?.description ?? item.description ?? '',
-        unit: item.unit ?? mat?.unit ?? null,
-        receipt: voucher.type === 'IN' ? qty : 0,
-        issue: voucher.type === 'OUT' ? qty : 0,
-        job_code: voucher.job_code,
-        vessel: voucher.vessel,
-        user_id: voucher.created_by,
-        user_name: USERS.find(u => u.id === voucher.created_by)?.name ?? voucher.receiver ?? null,
-        created_at: new Date().toISOString(),
-      })
-    })
-    return ok(voucher)
-  }
   try {
     // Cả ba lệnh ghi (movements, materials.closing_qty, vouchers.status)
     // nằm gọn trong một transaction phía Postgres - xem hàm
@@ -638,19 +464,6 @@ export async function logStockMove(
   if (!qty || qty <= 0) return fail('Số lượng phải lớn hơn 0')
   if (type !== 'IN' && type !== 'OUT') return fail('Loại phiếu phải là IN hoặc OUT')
 
-  if (!isSupabaseConfigured) {
-    const res = mock.addStockMove(userId, materialCode, type, qty, {
-      jobCode: opts?.jobCode ?? null,
-      vessel: opts?.vessel ?? null,
-      note: opts?.note ?? null,
-    })
-    if (!res) return fail('Không tìm thấy mã vật tư ' + materialCode)
-    const mat = mock.getMaterial(materialCode)!
-    const warning = res.closing_qty < 0
-      ? `TỒN ÂM: ${mat.description_vi ?? mat.description ?? materialCode} còn ${res.closing_qty} ${mat.unit ?? ''}`
-      : undefined
-    return ok(res, warning)
-  }
   try {
     // Ba lệnh ghi nằm trong một transaction phía Postgres - xem hàm
     // log_stock_move trong supabase/schema.sql.
@@ -676,13 +489,6 @@ export async function logStockMove(
 
 /** Các lần nhập/xuất gần nhất, kèm tên hàng - cho bảng dưới màn Nhập/Xuất kho. */
 export async function getStockMoves(limit = 30): Promise<ApiResult<(StockMove & { material?: Material })[]>> {
-  if (!isSupabaseConfigured) {
-    const rows = [...mock.stockMoves]
-      .reverse()
-      .slice(0, limit)
-      .map(mv => ({ ...mv, material: mock.getMaterial(mv.material_code ?? '') }))
-    return ok(rows)
-  }
   try {
     const { data, error } = await supabase
       .from('stock_moves')
@@ -712,14 +518,6 @@ export async function updateMaterialCategory(
     return fail('Chỉ admin được đổi nhóm vật tư')
   }
 
-  if (!isSupabaseConfigured) {
-    const mat = mock.getMaterial(code)
-    if (!mat) return fail('Không tìm thấy mã vật tư ' + code)
-    mat.category = category
-    if (category !== 'general' && Number(mat.min_stock) <= 0) mat.min_stock = 20
-    if (category === 'general') mat.min_stock = 0
-    return ok(mat)
-  }
   try {
     const { data: cur, error: e1 } = await supabase
       .from('materials')
@@ -757,9 +555,6 @@ export async function updateMaterialCategory(
  *  thật sự cần mua.
  */
 export async function getStockAlerts(threshold = 20): Promise<ApiResult<Material[]>> {
-  if (!isSupabaseConfigured) {
-    return ok(mock.materials.filter(m => Number(m.min_stock) > 0 && Number(m.closing_qty) <= threshold).sort((a, b) => Number(a.closing_qty) - Number(b.closing_qty)))
-  }
   try {
     const { data, error } = await supabase
       .from('materials')
@@ -780,14 +575,6 @@ export async function getStockAlerts(threshold = 20): Promise<ApiResult<Material
 export async function getExpiryAlerts(
   monthsThreshold = 18
 ): Promise<ApiResult<(Material & { months_left: number })[]>> {
-  if (!isSupabaseConfigured) {
-    const rows = mock.materials
-      .filter(m => m.has_expiry && m.expiry_date)
-      .map(m => ({ ...m, months_left: monthsUntil(m.expiry_date) ?? 999 }))
-      .filter(m => m.months_left <= monthsThreshold)
-      .sort((a, b) => a.months_left - b.months_left)
-    return ok(rows)
-  }
   try {
     const { data, error } = await supabase
       .from('materials')
@@ -809,31 +596,6 @@ export async function getExpiryAlerts(
 //  6. getCostByJob - tổng hợp vật tư theo JOB
 // =====================================================================
 export async function getCostByJob(jobCode: string): Promise<ApiResult<CostByJobRow[]>> {
-  if (!isSupabaseConfigured) {
-    const logs = mock.logs.filter(l => l.job_code === jobCode)
-    const agg = new Map<string, { theory: number; actual: number }>()
-    logs.forEach(l => {
-      const cur = agg.get(l.material_code ?? '') ?? { theory: 0, actual: 0 }
-      cur.actual += Number(l.qty) || 0
-      cur.theory += Number(l.qty) || 0
-      agg.set(l.material_code ?? '', cur)
-    })
-    const rows: CostByJobRow[] = []
-    agg.forEach((v, code) => {
-      const mat = mock.getMaterial(code)
-      rows.push({
-        material_code: code,
-        description_vi: mat?.description_vi ?? null,
-        unit: mat?.unit ?? null,
-        qty_theory: v.theory,
-        qty_actual: v.actual,
-        diff: v.actual - v.theory,
-        unit_price: mat?.unit_price ?? 0,
-        amount: v.actual * (mat?.unit_price ?? 0),
-      })
-    })
-    return ok(rows)
-  }
   try {
     const [{ data: logs }, { data: vitems }, { data: mats }] = await Promise.all([
       supabase.from('consumable_logs').select('material_code, qty').eq('job_code', jobCode),
@@ -927,14 +689,6 @@ export async function getMovements(filters?: {
   jobCode?: string
   code?: string
 }): Promise<ApiResult<Movement[]>> {
-  if (!isSupabaseConfigured) {
-    let mvs = [...mock.movements]
-    if (filters?.start) mvs = mvs.filter(m => (m.date ?? '') >= filters.start!)
-    if (filters?.end) mvs = mvs.filter(m => (m.date ?? '') <= filters.end!)
-    if (filters?.jobCode) mvs = mvs.filter(m => m.job_code === filters.jobCode)
-    if (filters?.code) mvs = mvs.filter(m => m.code === filters.code)
-    return ok(mvs)
-  }
   try {
     let q = supabase.from('movements').select('*').order('date', { ascending: true }).order('id')
     if (filters?.start) q = q.gte('date', filters.start)
@@ -959,38 +713,6 @@ export async function logRollCut(
   lengthUsed: number,
   userName?: string
 ): Promise<ApiResult<{ remaining: number; finished: boolean }>> {
-  if (!isSupabaseConfigured) {
-    if (!lengthUsed || lengthUsed <= 0) return fail('Số mét cắt phải lớn hơn 0')
-    const roll = mock.rolls.find(r => r.roll_id === rollId)
-    if (!roll) return fail('Không tìm thấy cuộn ' + rollId)
-    roll.used_length += lengthUsed
-    const remaining = roll.total_length - roll.used_length
-    const finished = remaining <= 0
-    if (finished) roll.status = 'finished'
-    mock.rollCuts.push({ id: mock.nextRollCutId++, roll_id: rollId, user_id: userId, job_code: jobCode, length_used: lengthUsed, timestamp: new Date().toISOString() })
-
-    const mat = roll.material_code ? mock.getMaterial(roll.material_code) : undefined
-    if (mat) {
-      mat.closing_qty = Number(mat.closing_qty) - lengthUsed
-      mock.movements.push({
-        id: mock.nextMovId++,
-        source_type: 'roll',
-        source_id: roll.id,
-        date: toISODate(),
-        code: roll.material_code,
-        description: mat.description_vi ?? mat.description,
-        unit: mat.unit,
-        receipt: 0,
-        issue: lengthUsed,
-        job_code: jobCode,
-        vessel: null,
-        user_id: userId,
-        user_name: userName ?? USERS.find(u => u.id === userId)?.name ?? null,
-        created_at: new Date().toISOString(),
-      })
-    }
-    return ok({ remaining: Math.max(0, remaining), finished })
-  }
   try {
     // Kiểm luôn ở client để phản hồi ngay, không tốn một vòng gọi mạng.
     // Hàm SQL cũng kiểm lại điều kiện này.
@@ -1016,12 +738,6 @@ export async function logRollCut(
 }
 
 export async function getActiveRolls(): Promise<ApiResult<(RollTracking & { material?: Material })[]>> {
-  if (!isSupabaseConfigured) {
-    const rolls = mock.rolls.filter(r => r.status === 'active').map(r => ({
-      ...r, material: mock.getMaterial(r.material_code ?? '')
-    }))
-    return ok(rolls as any)
-  }
   try {
     const { data, error } = await supabase
       .from('roll_tracking')
@@ -1036,9 +752,6 @@ export async function getActiveRolls(): Promise<ApiResult<(RollTracking & { mate
 }
 
 export async function getRollCuts(rollId: string): Promise<ApiResult<RollCut[]>> {
-  if (!isSupabaseConfigured) {
-    return ok(mock.rollCuts.filter(c => c.roll_id === rollId).reverse())
-  }
   try {
     const { data, error } = await supabase
       .from('roll_cuts')
@@ -1060,13 +773,6 @@ export async function getVouchers(filters?: {
   status?: string
   month?: string // yyyy-mm
 }): Promise<ApiResult<Voucher[]>> {
-  if (!isSupabaseConfigured) {
-    let vs = [...mock.vouchers]
-    if (filters?.type) vs = vs.filter(v => v.type === filters.type)
-    if (filters?.status) vs = vs.filter(v => v.status === filters.status)
-    if (filters?.month) vs = vs.filter(v => v.date.startsWith(filters.month!))
-    return ok(vs.reverse())
-  }
   try {
     let q = supabase.from('vouchers').select('*').order('created_at', { ascending: false })
     if (filters?.type) q = q.eq('type', filters.type)
@@ -1085,14 +791,6 @@ export async function getVouchers(filters?: {
 export async function getVoucher(
   id: number
 ): Promise<ApiResult<{ voucher: Voucher; items: (VoucherItem & { material?: Material })[] }>> {
-  if (!isSupabaseConfigured) {
-    const voucher = mock.vouchers.find(v => v.id === id)
-    if (!voucher) return fail('Không tìm thấy phiếu')
-    const items = mock.voucherItems.filter((i: any) => i.voucher_id === id).map((i: any) => ({
-      ...i, material: mock.getMaterial(i.material_code ?? '')
-    }))
-    return ok({ voucher, items })
-  }
   try {
     const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('id', id).single()
     if (vErr) throw vErr
@@ -1119,12 +817,6 @@ export async function getDashboardStats(): Promise<
     receiptThisMonth: number
   }>
 > {
-  if (!isSupabaseConfigured) {
-    const lowStock = mock.materials.filter(m => Number(m.closing_qty) <= m.min_stock).length
-    let issue = 0, receipt = 0
-    mock.movements.forEach(m => { issue += Number(m.issue) || 0; receipt += Number(m.receipt) || 0 })
-    return ok({ totalMaterials: mock.materials.length, lowStock, issueThisMonth: issue, receiptThisMonth: receipt })
-  }
   try {
     const { start, end } = monthRange()
     const startDate = start.slice(0, 10)
@@ -1157,16 +849,6 @@ export async function getDashboardStats(): Promise<
 
 /** Top N hàng xuất nhiều nhất tháng này */
 export async function getTopIssued(limit = 10): Promise<ApiResult<{ code: string; description: string; total: number }[]>> {
-  if (!isSupabaseConfigured) {
-    const agg = new Map<string, { code: string; description: string; total: number }>()
-    mock.movements.filter(m => Number(m.issue) > 0).forEach(m => {
-      const code = m.code ?? '(?)'
-      const cur = agg.get(code) ?? { code, description: m.description ?? code, total: 0 }
-      cur.total += Number(m.issue) || 0
-      agg.set(code, cur)
-    })
-    return ok(Array.from(agg.values()).sort((a, b) => b.total - a.total).slice(0, limit))
-  }
   try {
     const { start, end } = monthRange()
     const { data, error } = await supabase
@@ -1191,14 +873,6 @@ export async function getTopIssued(limit = 10): Promise<ApiResult<{ code: string
 
 /** Xu hướng xuất/nhập 4 tuần gần nhất */
 export async function getWeeklyTrend(): Promise<ApiResult<{ week: string; issue: number; receipt: number }[]>> {
-  if (!isSupabaseConfigured) {
-    return ok([
-      { week: 'Tuần 1', issue: 0, receipt: 0 },
-      { week: 'Tuần 2', issue: 0, receipt: 0 },
-      { week: 'Tuần 3', issue: 0, receipt: 0 },
-      { week: 'Tuần 4', issue: 0, receipt: 0 },
-    ])
-  }
   try {
     const end = new Date()
     const start = new Date()
@@ -1238,13 +912,6 @@ export async function getUserReport(
   start: string,
   end: string
 ): Promise<ApiResult<(ConsumableLog & { material?: Material })[]>> {
-  if (!isSupabaseConfigured) {
-    const logs = mock.logs
-      .filter(l => l.user_id === userId && l.timestamp >= start + 'T00:00:00' && l.timestamp <= end + 'T23:59:59')
-      .map(l => ({ ...l, material: mock.getMaterial(l.material_code ?? '') }))
-      .reverse()
-    return ok(logs as any)
-  }
   try {
     const { data, error } = await supabase
       .from('consumable_logs')
@@ -1262,16 +929,6 @@ export async function getUserReport(
 
 /** Tổng vật tư theo từng KTV (đếm ai xài nhiều) */
 export async function getUsageByUser(): Promise<ApiResult<{ name: string; total: number }[]>> {
-  if (!isSupabaseConfigured) {
-    const { USERS } = await import('./mock')
-    const agg = new Map<string, number>()
-    mock.logs.forEach(l => {
-      const user = USERS.find(u => u.id === l.user_id)
-      const name = user?.name ?? '(?)'
-      agg.set(name, (agg.get(name) ?? 0) + (Number(l.qty) || 0))
-    })
-    return ok(Array.from(agg.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total))
-  }
   try {
     const { data, error } = await supabase.from('consumable_logs').select('qty, user:users(name)')
     if (error) throw error

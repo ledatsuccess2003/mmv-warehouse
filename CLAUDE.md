@@ -19,7 +19,6 @@ React app (from the git root, matching `start-warehouse.bat`):
 cd mmv-warehouse
 npm install   # first time only
 npm run dev         # vite dev server, port 5173, host: true (LAN/phone access)
-npm run dev:mock    # nhu tren nhung CHE DO MOC, port 5174 (xem duoi)
 npm run build       # tsc -b && vite build
 npm run preview     # vite preview --host, port 4173
 npm run typecheck   # tsc --noEmit
@@ -27,8 +26,9 @@ npm run lint        # eslint . (flat config: eslint.config.js)
 npm run lint:fix    # eslint . --fix
 npm run test        # vitest run (chay mot lan)
 npm run test:watch  # vitest (watch mode)
+npm run test:config # node --test config/supabase-env.test.mjs (kiem cau hinh Supabase)
 ```
-There is **no CI** — nothing runs these for you. `npm run typecheck && npm run lint && npm run test` is the whole safety net; the `typecheck` skill (`.claude/skills/typecheck/`) wraps it. Run it before calling a React-app change done.
+There is **no CI** — nothing runs these for you. `npm run typecheck && npm run lint && npm run test && npm run test:config` is the whole safety net; the `typecheck` skill (`.claude/skills/typecheck/`) wraps it. Run it before calling a React-app change done.
 
 ### Tests
 
@@ -36,20 +36,15 @@ Vitest, configured in the `test` block of `vite.config.ts` — deliberately **no
 
 Scope is the data layer only: `src/lib/*.test.ts`, `environment: 'node'`, no jsdom, no testing-library, no component rendering. Adding a component test means adding those dependencies — decide that deliberately rather than drifting into it.
 
-Two things every `api.*.test.ts` must do, and both matter:
+What's covered is pure logic only: `excel.test.ts` (workbook layout) and `api.errmsg.test.ts` (`errMsg`). **No test exercises an API function's data path.** There used to be an in-memory mock branch in every API function, and ~50 tests ran against it; it was removed because a Vercel build without env vars silently served fake data to the shop floor. Permission rules (category / role) are now enforced and verifiable only in the RPCs in `schema.sql` plus the client-side guards in `api.ts` — check them against the live database by hand.
 
-1. **`vi.mock('@/lib/supabase')`** returning `isSupabaseConfigured: false` plus a `supabase` Proxy that throws on any property access. Dev machines have a real `.env`, and a test that slips into the Supabase branch writes to the **live company warehouse**. `vite.config.ts` also blanks the `VITE_*` vars for test runs; that is the belt, this is the braces.
-2. **`vi.resetModules()` + re-import inside `beforeEach`.** `store` in `mock.ts` is module-level mutable state, and `materials: [...MATERIALS]` is a *shallow* copy — the material objects are shared with the source array, so one test's stock change leaks into the next. Re-importing the module is what gives each test a clean warehouse.
+Any test that imports `api.ts` must **`vi.mock('@/lib/supabase')`**. Dev machines have a real `.env`, and a test that reaches the real client writes to the **live company warehouse**. `vite.config.ts` also blanks the `VITE_*` vars for test runs; that is the belt, this is the braces.
 
-These tests only ever exercise the **mock** branch. Every API function's Supabase branch is a `supabase.rpc(...)` into a function in `schema.sql` that they cannot reach. A green suite proves the mock branch and the rule it encodes — not the RPC. Change a permission rule and you must change it in both places by hand.
-
-`src/test/setup.ts` swallows `console.error('[MMV api]', …)` and nothing else. Most tests here fail on purpose (wrong role, wrong quantity, unknown code) and `fail()` logs every one; other `console.error` output still comes through.
+`src/test/setup.ts` swallows `console.error('[MMV api]', …)` (what `fail()` logs) and nothing else.
 
 `no-explicit-any` and `exhaustive-deps` are `warn` (not `error`) on purpose — see the comments in `eslint.config.js`. The Supabase API layer (`src/lib/api.ts`) uses `any` pragmatically and pages use `useEffect(() => { load() }, [...])` throughout; don't "fix" these opportunistically unless asked.
 
-`npm run dev:mock` runs the same app against the in-memory fixtures in `src/lib/mock.ts` instead of Supabase, on port 5174 — so both can run at once. It works by pointing Vite's `envDir` at the git root (which has no `.env`), so `isSupabaseConfigured` comes out false; it never reads, renames or deletes the real `mmv-warehouse/.env`. Config is `vite.config.mock.ts`.
-
-This exists because the mock branch is otherwise unreachable on any machine that has been set up: `.env` is present, so Supabase always wins, and the branch nobody can run is the branch that rots. Use it to exercise write flows without touching the live warehouse. Caveat: the mock store is in-memory, so a **full page load wipes it** — navigate inside the app (click the nav) to keep state across screens.
+There is **no offline/mock mode**. `npm run dev` always talks to the Supabase project in `.env` — the live warehouse — so exercising a write flow locally writes real stock. Use a separate Supabase project in `.env` if you need a sandbox.
 
 Standalone HTML tool: open `app-vat-tu-xuong.html` directly in a browser, or run `start-web.bat` (serves it via `server.ps1` on port 8080 for LAN/tablet access).
 
@@ -59,11 +54,9 @@ Vite + React 18 + TypeScript (strict), Tailwind, shadcn/ui-style components unde
 
 ## Architecture (React app) — the parts you can't see from one file
 
-### Every API function has two implementations
+### One data-access layer, Supabase only
 
-`src/lib/api.ts` (~1150 lines) is the single data-access layer. Every exported function starts with `if (!isSupabaseConfigured) { ...mock branch... }` and falls through to a Supabase branch. `isSupabaseConfigured` comes from `src/lib/supabase.ts` and is false when `.env` is missing, so the whole app runs offline against `src/lib/mock.ts` — an in-memory mutable store that mirrors `supabase/seed.sql`.
-
-**When you add or change an API function, implement both branches.** A Supabase-only change silently breaks the no-`.env` path; a mock-only change passes local testing and breaks production.
+`src/lib/api.ts` is the single data-access layer; every exported function talks to Supabase directly. `isSupabaseConfigured` (`src/lib/supabase.ts`) is false when the `VITE_SUPABASE_*` vars are missing or invalid (validated by `config/supabase-env.mjs`: placeholders from `.env.example` and `service_role`/secret keys are rejected), and `App.tsx` then renders `ConfigurationRequired` **instead of the app**. `vite.config.ts` runs the same validation on every `vite build`, so a Vercel build without the vars fails instead of deploying. Don't reintroduce a fallback data path: the old mock branch is exactly how a misconfigured Vercel build served fake stock to the shop floor unnoticed.
 
 ### The `ApiResult` contract
 
@@ -89,9 +82,9 @@ useEffect(() => {
 2. `update materials.closing_qty` with a read-modify-write,
 3. insert a row into `movements` (the append-only ledger that feeds reports and Excel export).
 
-So `movements` is populated only by application code. Any new flow that moves stock must replicate all three writes — in both the Supabase and mock branches. Negative stock is allowed and surfaced via `ApiResult.warning` ("TỒN ÂM"), not blocked.
+So `movements` is populated only by application code. Any new flow that moves stock must replicate all three writes. Negative stock is allowed and surfaced via `ApiResult.warning` ("TỒN ÂM"), not blocked.
 
-Since the RPC work (commits `9066481`…`2e8ad35`) the Supabase side of each flow is a single `create or replace function` in `schema.sql` that wraps all three writes in one transaction — `log_consumable`, `log_manual_consumable`, `log_roll_cut`, `confirm_voucher`, `log_stock_move`. The client just calls `supabase.rpc(...)`. The **mock** branch still does the three writes by hand in `mock.ts`, so it is the one that can go out of sync; keep the two semantically identical.
+Since the RPC work (commits `9066481`…`2e8ad35`) the Supabase side of each flow is a single `create or replace function` in `schema.sql` that wraps all three writes in one transaction — `log_consumable`, `log_manual_consumable`, `log_roll_cut`, `confirm_voucher`, `log_stock_move`. The client just calls `supabase.rpc(...)`.
 
 ### Material categories are the permission axis
 
@@ -115,7 +108,7 @@ The Supabase client is created with `auth: { persistSession: false }`. Login (`s
 - **non-admin users log in by tapping their name — no password at all** (shop-floor tablet UX),
 - **admins** are checked against a plaintext `pin` column, compared client-side.
 
-The session is a Zustand `persist` store (`src/store/useAuth.ts`) in localStorage under `mmv.auth`. RLS is enabled on every table but every policy is `allow_all ... to anon, authenticated using (true)` — the anon key is effectively full access. This is deliberate for an internal prototype (the schema comment says "SIẾT LẠI khi lên production"); don't harden it unprompted.
+The session is a Zustand `persist` store (`src/store/useAuth.ts`) in localStorage under `authStorageKey` — `mmv.auth.supabase:<project origin>`, so switching Supabase projects forces a fresh login. RLS is enabled on every table but every policy is `allow_all ... to anon, authenticated using (true)` — the anon key is effectively full access. This is deliberate for an internal prototype (the schema comment says "SIẾT LẠI khi lên production"); don't harden it unprompted.
 
 ### Role gating is duplicated in two places
 
@@ -135,13 +128,12 @@ The **Movement** export targets the warehouse workbook's `Movement` sheet: the 1
 
 ### Supabase schema changes
 
-There is no Supabase CLI and no migrations folder. `supabase/*.sql` are run by hand in the Supabase SQL editor; edit them directly. A schema change means updating **three** places: the SQL file, the `Database`/entity types in `src/lib/types.ts`, and the mock fixtures in `src/lib/mock.ts`.
+There is no Supabase CLI and no migrations folder. `supabase/*.sql` are run by hand in the Supabase SQL editor; edit them directly. A schema change means updating **two** places: the SQL file and the `Database`/entity types in `src/lib/types.ts`.
 
 `schema.sql` opens with `drop table … cascade`, so it is **only** for building a fresh database — never tell anyone to re-run it against a live one. Changing a live database means writing a separate idempotent `migrate_*.sql` alongside it (see `migrate_2026_09_vat_tu_ngoai_tieu_hao.sql`, which `ALTER`s the columns and re-declares the changed functions) and keeping `schema.sql` as the canonical definition.
 
 Run order on a new database: `schema.sql` → `seed.sql` → `seed_materials.sql`. `seed_materials.sql` is generated, not hand-edited: it holds all 1501 codes from `Material.xlsx` and is re-runnable, with `on conflict (code) do update` touching only the xlsx-owned columns so `description_vi`, `unit_price`, `min_stock` and expiry data from `seed.sql` survive. Regenerate it with `python scripts/gen_seed_materials.py` when a new `Material.xlsx` arrives.
 
-`mock.ts` deliberately carries only a 48-code **sample** of the `general` materials, not all 1466 — the full list would ship in the production bundle for the benefit of the no-`.env` path alone.
 
 ### PWA
 
@@ -153,7 +145,7 @@ Hand-rolled, no Vite PWA plugin: `public/manifest.webmanifest` + `public/sw.js` 
 
 ## Env vars
 
-`mmv-warehouse/.env` needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (see `.env.example`). Without them the app boots into mock mode with a console warning instead of failing. Never commit real Supabase keys — `.gitignore` calls this out explicitly.
+`mmv-warehouse/.env` needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (see `.env.example`). Without them `npm run build` fails and `npm run dev` shows only the `ConfigurationRequired` screen. `docs/vercel-supabase.md` is the setup/verification runbook. They are baked in at **build** time, so on Vercel they must be set under Settings → Environment Variables *before* the build — adding them afterwards needs a redeploy. Never commit real Supabase keys — `.gitignore` calls this out explicitly.
 
 ## Deployment
 

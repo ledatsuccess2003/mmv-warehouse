@@ -7,10 +7,9 @@ import { assertSupabaseBuildConfig } from './config/supabase-env.mjs'
 
 export default defineConfig(({ command, mode }) => {
   if (command === 'build') {
-    assertSupabaseBuildConfig(loadEnv(mode, process.cwd(), 'VITE_'), {
-      mode,
-      vercel: process.env.VERCEL === '1',
-    })
+    // Build nào cũng phải có cấu hình Supabase hợp lệ - kể cả trên Vercel.
+    // Thiếu thì build hỏng ngay, thay vì deploy một bản không có dữ liệu.
+    assertSupabaseBuildConfig(loadEnv(mode, process.cwd(), 'VITE_'))
   }
   return {
     plugins: [react()],

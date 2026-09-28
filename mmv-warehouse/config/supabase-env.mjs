@@ -59,20 +59,11 @@ export function readSupabaseConfig(env) {
   return { url, anonKey, errors, isConfigured: errors.length === 0 }
 }
 
-/** Only an explicit local demo build may proceed without valid configuration. */
-export function assertSupabaseBuildConfig(env, { mode, vercel } = {}) {
+/** Every build requires valid configuration; there is no demo/mock mode. */
+export function assertSupabaseBuildConfig(env) {
   const config = readSupabaseConfig(env)
-  const isVercel = vercel === true || vercel === 1 || vercel === '1' || vercel === 'true'
-
-  if (mode === 'demo') {
-    if (isVercel) {
-      throw new Error('[MMV] Không cho phép build chế độ demo trên Vercel. Hãy cấu hình Supabase và build chế độ production.')
-    }
-    return config
-  }
-
   if (!config.isConfigured) {
-    throw new Error(`[MMV] Không thể build khi cấu hình Supabase chưa hợp lệ:\n${config.errors.join('\n')}\nCấu hình hai biến môi trường rồi build lại. Bản demo cục bộ phải dùng chế độ demo rõ ràng.`)
+    throw new Error(`[MMV] Không thể build khi cấu hình Supabase chưa hợp lệ:\n${config.errors.join('\n')}\nCấu hình hai biến môi trường rồi build lại.`)
   }
   return config
 }

@@ -6,9 +6,7 @@
   "description": "Quản lý kho hàng hải - Mermaid Maritime Vietnam",
   "scripts": {
     "dev": "vite",
-    "dev:mock": "vite --config vite.config.mock.ts --mode demo",
     "build": "tsc -b && vite build",
-    "build:demo": "tsc -b && vite build --mode demo",
     "test:config": "node --test config/supabase-env.test.mjs",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",

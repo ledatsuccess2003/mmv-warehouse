@@ -6,12 +6,12 @@ description: Run TypeScript type-checking, ESLint and the Vitest suite on the mm
 Run this from the git root (`mmv-warehouse/`), not from inside the nested app folder:
 
 ```
-cd mmv-warehouse && npm run typecheck && npm run lint && npm run test
+cd mmv-warehouse && npm run typecheck && npm run lint && npm run test && npm run test:config
 ```
 
 Notes:
 - `npm run typecheck` is `tsc --noEmit`. `npm run lint` is ESLint (`eslint.config.js`). `npm run test` is `vitest run`.
-- The suite covers `src/lib` only — the data layer's **mock** branch. A green run says nothing about the Supabase RPCs in `supabase/schema.sql`, which the tests cannot reach. Don't report a data-layer change as verified on the strength of the suite alone.
+- The suite covers pure logic only (Excel layout, `errMsg`). No test exercises an API function's data path or the Supabase RPCs in `supabase/schema.sql`. Don't report a data-layer change as verified on the strength of the suite alone.
 - The nested folder name repeats (`mmv-warehouse/mmv-warehouse/`); double-check you're one level into the git root, not two, before running the command.
 - `no-explicit-any` is a warning, not an error — don't treat pre-existing `any` usage in `src/lib/api.ts` as something to fix unless asked.
 - Report any type errors or new lint errors with file:line and a one-line fix suggestion. Do not attempt to silence errors with `@ts-ignore` or `eslint-disable` unless asked.

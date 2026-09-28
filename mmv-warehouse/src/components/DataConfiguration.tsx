@@ -1,4 +1,4 @@
-import { AlertTriangle, Database } from 'lucide-react'
+import { Database } from 'lucide-react'
 import { configurationErrors } from '@/lib/supabase'
 
 export function ConfigurationRequired() {
@@ -28,16 +28,5 @@ export function ConfigurationRequired() {
         </button>
       </section>
     </main>
-  )
-}
-
-export function DemoBanner() {
-  return (
-    <aside className="border-b border-amber-300 bg-amber-100 px-4 py-3 text-amber-950" role="status">
-      <div className="mx-auto flex max-w-6xl items-start gap-3 text-sm sm:text-base">
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-        <p><strong>Chế độ dữ liệu mẫu.</strong> Thao tác chỉ để thử; không lưu lên kho chung và mất khi tải lại trang.</p>
-      </div>
-    </aside>
   )
 }
