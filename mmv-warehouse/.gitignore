@@ -24,3 +24,8 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+.npm-cache/
+vite.config.js
+vite.config.d.ts

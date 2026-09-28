@@ -1,37 +1,33 @@
-// defineConfig lay tu 'vitest/config' chu khong phai 'vite': ban nay la
-// ban cua vite co them khoa `test`. Nho vay alias '@' chi khai o MOT cho
-// cho ca app lan test - them mot file vitest.config.ts rieng se thanh
-// cho thu ba phai giu dong bo (xem CLAUDE.md), sinh lech som muon.
+// Dùng cấu hình Vitest để giữ alias chung cho app và kiểm thử.
 import { defineConfig } from 'vitest/config'
+import { loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'node:path'
+import { assertSupabaseBuildConfig } from './config/supabase-env.mjs'
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+export default defineConfig(({ command, mode }) => {
+  if (command === 'build') {
+    assertSupabaseBuildConfig(loadEnv(mode, process.cwd(), 'VITE_'), {
+      mode,
+      vercel: process.env.VERCEL === '1',
+    })
+  }
+  return {
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+      },
     },
-  },
-  server: {
-    host: true, // cho phép điện thoại/máy khác trong LAN truy cập
-    port: 5173,
-  },
-  preview: {
-    host: true,
-    port: 4173,
-  },
-  test: {
-    // Chi test tang du lieu (src/lib), khong render component, nen khong
-    // can jsdom - moi truong node nhe hon va khoi them testing-library.
-    environment: 'node',
-    include: ['src/**/*.test.ts'],
-    setupFiles: ['src/test/setup.ts'],
-    // Tat cac bien VITE_* khi chay test. supabase.ts doc import.meta.env
-    // de dat isSupabaseConfigured; may dev CO .env that, neu khong chan
-    // thi test se goi thang len Supabase that. Cac file test con
-    // vi.mock('@/lib/supabase') lam lop chan thu hai.
-    env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '' },
-  },
+    server: { host: true, port: 5173 },
+    preview: { host: true, port: 4173 },
+    test: {
+      environment: 'node',
+      include: ['src/**/*.test.ts'],
+      setupFiles: ['src/test/setup.ts'],
+      // Không để kiểm thử dùng cấu hình kho thật từ máy lập trình.
+      // Các test API còn mock module Supabase làm lớp chặn thứ hai.
+      env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '' },
+    },
+  }
 })

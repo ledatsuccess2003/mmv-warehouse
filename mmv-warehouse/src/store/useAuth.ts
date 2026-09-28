@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User } from '@/lib/types'
+import { authStorageKey } from '@/lib/supabase'
 
 interface AuthState {
   user: User | null
@@ -30,6 +31,6 @@ export const useAuth = create<AuthState>()(
         return r === 'warehouse' || r === 'manager' || r === 'admin'
       },
     }),
-    { name: 'mmv.auth' }
+    { name: authStorageKey }
   )
 )

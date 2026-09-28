@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { mergeConfig } from 'vitest/config'
+import { defineConfig, mergeConfig } from 'vitest/config'
 import base from './vite.config'
 
 /**
@@ -16,12 +16,14 @@ import base from './vite.config'
  * Cach lam o day: chi tro envDir ra thu muc goc cua git (mot cap tren,
  * khong co .env). Vite khong tim thay bien nao, isSupabaseConfigured
  * thanh false, app chay bang du lieu mau trong bo nho.
+ * Lenh dev:mock con dat --mode demo de bo qua ca bien Supabase co san
+ * trong shell, bao dam khong ghi vao kho that khi chay thu.
  *
  * KHONG dung, khong doi ten, khong xoa file .env that - chay song song
  * duoc voi `npm run dev` vi dung cong khac.
  */
-export default mergeConfig(base, {
+export default defineConfig((env) => mergeConfig(base(env), {
   envDir: path.resolve(__dirname, '..'),
   server: { port: 5174 },
   preview: { port: 4174 },
-})
+}))

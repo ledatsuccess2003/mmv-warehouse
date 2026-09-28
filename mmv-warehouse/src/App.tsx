@@ -2,6 +2,8 @@ import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoadingScreen } from './components/ui/spinner'
+import { ConfigurationRequired, DemoBanner } from './components/DataConfiguration'
+import { isSupabaseConfigured, isDemoMode } from './lib/supabase'
 
 // Login va Home nap thang: day la hai man dau tien moi nguoi deu thay,
 // cho them mot vong tai o day chi lam cham cam nhan.
@@ -28,8 +30,11 @@ const ReportUser = lazy(() => import('./pages/ReportUser'))
 import { InstallAppPrompt } from './components/InstallAppPrompt'
 
 export default function App() {
+  if (!isSupabaseConfigured && !isDemoMode) return <ConfigurationRequired />
+
   return (
     <>
+    {isDemoMode && <DemoBanner />}
     <Suspense fallback={<LoadingScreen />}>
     <Routes>
       <Route path="/login" element={<Login />} />
