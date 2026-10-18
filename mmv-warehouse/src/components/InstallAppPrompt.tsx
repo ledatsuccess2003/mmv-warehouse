@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download, Share, Smartphone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog } from '@/components/ui/dialog'
 
 interface DeferredInstallPrompt extends Event {
   prompt: () => Promise<void>
@@ -16,6 +17,7 @@ export function InstallAppPrompt() {
   const [ios, setIos] = useState(false)
   const [installed, setInstalled] = useState(false)
   const [deferred, setDeferred] = useState<DeferredInstallPrompt | null>(null)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     setMobile(isMobile())
@@ -46,12 +48,17 @@ export function InstallAppPrompt() {
   }
 
   return (
-    <div className="install-prompt no-print" role="dialog" aria-modal="true" aria-labelledby="install-title">
-      <div className="install-prompt__card">
+    <>
+      <div className="no-print fixed bottom-3 right-3 z-40">
+        <Button type="button" size="sm" onClick={() => setOpen(true)} aria-haspopup="dialog">
+          <Download className="h-4 w-4" /> Cài app (tùy chọn)
+        </Button>
+      </div>
+      <Dialog open={open} onClose={() => setOpen(false)} title="Cài app (không bắt buộc)">
         <div className="install-prompt__icon"><Smartphone className="h-7 w-7" /></div>
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.16em] text-navy-light">Kho MMV trên điện thoại</p>
-          <h2 id="install-title" className="mt-1 text-2xl font-extrabold text-navy">Cài ứng dụng để dùng nhanh hơn</h2>
+          <p className="mt-1 font-semibold text-navy">Bạn vẫn dùng đầy đủ website mà không cần cài app.</p>
           {ios ? (
             <p className="mt-2 text-base text-muted-foreground">Nhấn <Share className="mx-1 inline h-4 w-4 text-navy" /> Chia sẻ, rồi chọn <b>Thêm vào Màn hình chính</b>.</p>
           ) : deferred ? (
@@ -61,7 +68,8 @@ export function InstallAppPrompt() {
           )}
         </div>
         {deferred && <Button size="lg" className="mt-5 w-full" onClick={install}><Download className="h-5 w-5" /> Cài Kho MMV</Button>}
-      </div>
-    </div>
+        <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => setOpen(false)}>Tiếp tục dùng website</Button>
+      </Dialog>
+    </>
   )
 }
