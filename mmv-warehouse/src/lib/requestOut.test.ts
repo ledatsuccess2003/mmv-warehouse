@@ -53,7 +53,12 @@ describe('OUT follows the inspected October source A:F voucher block', () => {
     expect(out['!merges']).toEqual([
       { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } },
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 5 } },
+      { s: { r: 5, c: 0 }, e: { r: 5, c: 2 } },
     ])
+    expect(out['!rows']![5].hpt).toBe(13.2)
   })
 
   it('preserves canonical code, description and unit exactly, including spaces and Unicode', () => {
@@ -181,6 +186,41 @@ describe('Movement 2 transfer and native XLSX print settings', () => {
 })
 
 describe('historical requested-only copies remain separate from actual OUT', () => {
+  it('wraps long JOB and merged receiver/vessel metadata without truncation or changed column geometry', () => {
+    const input = request({ job_code: 'TEST-E2E-20261018', requester_name: 'M'.repeat(150), vessel: 'M'.repeat(300) })
+    const wb = buildRequestOutWorkbook([input], '2026-10-18')
+    const out = wb.Sheets.OUT
+    expect(out.F6.v).toBe('TEST-E2E-20261018')
+    expect(out.F6.s.alignment.wrapText).toBe(true)
+    expect(out['!rows']![5].hpt).toBeGreaterThan(13.2)
+    expect(out['!rows']![3].hpt).toBeGreaterThan(13.2)
+    expect(out['!rows']![4].hpt).toBeGreaterThan(13.2)
+    expect(out['!merges']).toContainEqual({ s: { r: 3, c: 0 }, e: { r: 3, c: 5 } })
+    expect(out.A4.v).toContain(input.requester_name)
+    expect(out.A5.v).toContain(input.vessel)
+    expect(out['!cols']!.map(c => c.width)).toEqual([6.33203125, 17.33203125, 42, 9.33203125, 10, 13.6640625])
+  })
+
+  it('gives the details sheet bounded native A4 landscape fit-to-width settings and readable wrapped cells', () => {
+    const input = requested({ job_code: 'M'.repeat(150), vessel: 'M'.repeat(300), note: 'M'.repeat(4000) })
+    const wb = buildRequestVoucherWorkbook(input)
+    const details = wb.Sheets['Thong tin yeu cau']
+    const values = XLSX.utils.sheet_to_json<(string | number)[]>(details, { header: 1, defval: '' })
+    const note = values.filter(row => String(row[0]).startsWith('Ghi chú yêu cầu gốc')).map(row => row[1]).join('')
+    expect(note).toBe(input.note)
+    expect(values.filter(row => String(row[0]).startsWith('Ghi chú yêu cầu gốc')).length).toBeGreaterThan(1)
+    expect(details['!rows']!.every(row => !row || (row.hpt! > 0 && row.hpt! <= 409.5))).toBe(true)
+    expect(details.B10.s.font.sz).toBe(10)
+    expect(details.B10.s.alignment.wrapText).toBe(true)
+    expect(details['!cols']!.reduce((sum, c) => sum + (c.wch ?? 0), 0)).toBeLessThanOrEqual(145)
+    const detailsXml = xml(wb, 'xl/worksheets/sheet2.xml')
+    expect(detailsXml).toContain('<pageSetUpPr fitToPage="1"/>')
+    expect(detailsXml).toContain('paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"')
+    expect(xml(wb, 'xl/workbook.xml')).toContain(`$A$1:$F$${values.length}`)
+    expect(xml(wb, 'xl/workbook.xml')).toContain('localSheetId="1"')
+    expect(wb.Sheets.REQUEST.F6.v).toBe('M'.repeat(150))
+  })
+
   it('exports Monday requested quantities on Friday, never substituting default issued zero', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-16T09:00:00Z'))

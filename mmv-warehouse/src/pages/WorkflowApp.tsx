@@ -51,6 +51,65 @@ const statusName: Record<string, string> = {
 const time = (s: string) =>
   new Date(s).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 type Cart = { code: string; qty: number };
+type PendingConfirmation = {
+  id: string;
+  token: string;
+  request: WarehouseRequest;
+} & ({ kind: "cancel" | "reject" } | { kind: "issue"; voucherNo: string; lines: { line_id: string; qty: number }[] });
+
+function ConfirmationDialog({ pending, reason, error, busy, onReason, onClose, onConfirm }: {
+  pending: PendingConfirmation;
+  reason: string;
+  error: string;
+  busy: boolean;
+  onReason: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const container = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = requestAnimationFrame(() => (container.current?.querySelector<HTMLElement>("textarea, button:not([disabled])") || container.current)?.focus());
+    return () => { cancelAnimationFrame(frame); if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [pending.id]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); if (!busy) closeRef.current(); }
+      if (event.key !== "Tab") return;
+      const elements = Array.from(container.current?.querySelectorAll<HTMLElement>('button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex="0"]') || []);
+      const first = elements[0], last = elements[elements.length - 1];
+      if (!first) { event.preventDefault(); container.current?.focus(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === container.current)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => document.removeEventListener("keydown", keydown);
+  }, [busy]);
+  const title = pending.kind === "issue" ? "Kiểm tra trước khi xác nhận thực cấp" : pending.kind === "cancel" ? "Hủy yêu cầu của tôi" : "Từ chối yêu cầu";
+  const confirmLabel = pending.kind === "issue" ? "Xác nhận đã bàn giao và ghi giảm tồn" : pending.kind === "cancel" ? "Xác nhận hủy yêu cầu" : "Xác nhận từ chối";
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3" onClick={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <div ref={container} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="workflow-confirm-title" aria-describedby="workflow-confirm-description" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+      <h2 id="workflow-confirm-title" className="text-xl font-bold text-slate-900">{title}</h2>
+      <p id="workflow-confirm-description" className="my-3 text-slate-600">Phiếu #{pending.request.request_no} · {pending.request.job_code} · {pending.request.requester_name}</p>
+      <form onSubmit={event => { event.preventDefault(); if (!busy) onConfirm(); }}>
+        {pending.kind === "issue" ? <>
+          <p className="rounded-xl bg-amber-50 p-3 text-amber-900">Chỉ xác nhận khi đã bàn giao hàng thật. Thao tác này ghi giảm tồn và lưu lịch sử, không phải bước xin duyệt.</p>
+          <p className="my-3 font-bold">Số SIV đã đối chiếu: {pending.voucherNo}</p>
+          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="py-2">Mã / Tên chuẩn</th><th>ĐVT</th><th className="text-right">Số thực cấp sẽ ghi</th></tr></thead><tbody>{pending.request.lines.map(line => <tr className="border-b" key={line.id}><td className="py-3 pr-3"><b>{line.material_code}</b><br />{line.description}</td><td>{line.unit}</td><td className="text-right font-bold">{pending.lines.find(actual => actual.line_id === line.id)?.qty ?? "Thiếu số lượng"}</td></tr>)}</tbody></table></div>
+        </> : <>
+          <label htmlFor="workflow-confirm-reason" className="mb-2 block font-semibold">Lý do {pending.kind === "cancel" ? "hủy yêu cầu" : "từ chối"} (bắt buộc)</label>
+          <textarea id="workflow-confirm-reason" value={reason} required maxLength={4000} rows={4} disabled={busy} onChange={event => onReason(event.target.value)} className="w-full rounded-lg border border-slate-300 p-3" placeholder="Ghi rõ lý do để lưu vào lịch sử xử lý…" />
+          <p className="mt-2 text-sm text-slate-600">Lý do được lưu trên máy chủ; {pending.kind === "cancel" ? "hủy" : "từ chối"} không xóa dấu vết và không trừ tồn.</p>
+        </>}
+        {error ? <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-red-800">{error}</p> : null}
+        <div className="mt-5 flex flex-wrap justify-end gap-3"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Quay lại, chưa thực hiện</Button><Button type="submit" disabled={busy || (pending.kind !== "issue" && !reason.trim())}>{busy ? "Đang lưu…" : confirmLabel}</Button></div>
+      </form>
+    </div>
+  </div>;
+}
+
 const emptyHistory = (): RequestHistoryPage => ({ items: [], has_more: false, next_cursor: null, total_count: 0 });
 const physicalExportInput = (r: WarehouseRequest) => ({
   id: r.id, request_no: r.request_no, voucher_no: r.voucher_no || "",
@@ -134,6 +193,9 @@ export default function WorkflowApp() {
     [focusedRequest, setFocusedRequest] = useState<WarehouseRequest | null>(null),
     [summaries, setSummaries] = useState<Record<string, WarehouseDaySummary>>({}),
     [today, setToday] = useState(vietnamDate());
+  const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null),
+    [confirmationReason, setConfirmationReason] = useState(""),
+    [confirmationError, setConfirmationError] = useState("");
   const submitKey = useRef(crypto.randomUUID()),
     issueKeys = useRef<Record<string, string>>({}),
     syncing = useRef(new Set<string>()),
@@ -142,6 +204,7 @@ export default function WorkflowApp() {
     historyScope = useRef(""),
     actionGeneration = useRef(0),
     identityGeneration = useRef(0),
+    postingConfirmation = useRef<string | null>(null),
     historyFilterRef = useRef(historyFilter),
     historyLoadingRef = useRef(new Set<string>());
   historyFilterRef.current = historyFilter;
@@ -252,6 +315,10 @@ export default function WorkflowApp() {
       setHistory(emptyHistory());
       setFocusedRequest(null);
       setSummaries({});
+      setConfirmation(null);
+      setConfirmationReason("");
+      setConfirmationError("");
+      postingConfirmation.current = null;
       historyGeneration.current += 1;
       historyScope.current = "";
       actionGeneration.current += 1;
@@ -355,6 +422,10 @@ export default function WorkflowApp() {
       setSummaries({});
       setFocusedRequest(null);
       historyScope.current = "";
+      setConfirmation(null);
+      setConfirmationReason("");
+      setConfirmationError("");
+      postingConfirmation.current = null;
       historyGeneration.current += 1;
       setIssueQty({});
       setVoucher({});
@@ -390,6 +461,10 @@ export default function WorkflowApp() {
     setHistory(emptyHistory());
     setFocusedRequest(null);
     setSummaries({});
+    setConfirmation(null);
+    setConfirmationReason("");
+    setConfirmationError("");
+    postingConfirmation.current = null;
     if (oldToken) await rpc("mmv_logout", { p_token: oldToken }).catch(() => {});
   }
   const visible = materials.filter((m) =>
@@ -429,44 +504,35 @@ export default function WorkflowApp() {
     });
   }
   async function approve(r: WarehouseRequest, yes: boolean) {
-    if (!session) return;
-    const reason = yes ? "Đồng ý theo phiếu yêu cầu" : window.prompt("Lý do từ chối yêu cầu:");
-    if (reason === null) return;
+    if (!session || busy || !session.can_approve || r.status !== "pending") return;
+    if (!yes) {
+      setConfirmation({ id: crypto.randomUUID(), token: session.token, kind: "reject", request: r });
+      setConfirmationReason("");
+      setConfirmationError("");
+      return;
+    }
     await action(async () => {
-      if (!reason.trim()) throw new Error("Cần ghi lý do từ chối.");
       const request = await rpc<WarehouseRequest>("mmv_approve_request", {
         p_token: session.token,
         p_request_id: r.id,
-        p_approve: yes,
-        p_note: reason.trim(),
+        p_approve: true,
+        p_note: "Đồng ý theo phiếu yêu cầu",
       });
       if (activeToken.current !== session.token) return;
       updateRequest(request);
       void dispatchPush(session.token);
-      setMessage(
-        yes
-          ? "Đã lưu quyết định duyệt. Chỉ kho xác nhận cấp thực tế mới trừ tồn."
-          : "Đã từ chối yêu cầu.",
-      );
+      setMessage("Đã lưu quyết định duyệt. Chỉ kho xác nhận cấp thực tế mới trừ tồn.");
       await load(session);
     });
   }
   async function cancelRequest(r: WarehouseRequest) {
-    if (!session || r.requester_id !== session.user.id) return;
-    const reason = window.prompt(`Lý do hủy yêu cầu #${r.request_no}:`);
-    if (reason === null) return;
-    await action(async () => {
-      if (!reason.trim()) throw new Error("Cần ghi lý do hủy yêu cầu.");
-      const request = await rpc<WarehouseRequest>("mmv_cancel_request", { p_token: session.token, p_request_id: r.id, p_note: reason.trim() });
-      if (activeToken.current !== session.token) return;
-      updateRequest(request);
-      setMessage("Đã hủy yêu cầu của bạn; lịch sử và lý do vẫn được lưu, không trừ tồn.");
-      void dispatchPush(session.token);
-      await load(session);
-    });
+    if (!session || busy || r.requester_id !== session.user.id || !["pending", "approved"].includes(r.status)) return;
+    setConfirmation({ id: crypto.randomUUID(), token: session.token, kind: "cancel", request: r });
+    setConfirmationReason("");
+    setConfirmationError("");
   }
   async function issue(r: WarehouseRequest) {
-    if (!session) return;
+    if (!session || busy || !isWarehouse || r.status !== "approved") return;
     await action(async () => {
       if (!voucher[r.id]?.trim())
         throw new Error(
@@ -481,27 +547,61 @@ export default function WorkflowApp() {
       }));
       if (lines.some((l) => !Number.isFinite(l.qty) || l.qty < 0))
         throw new Error("Số lượng thực cấp không hợp lệ");
-      if (
-        !window.confirm(
-          "Bạn xác nhận đã bàn giao hàng thực tế đúng số lượng nhập? Thao tác này ghi giảm tồn và lưu lịch sử.",
-        )
-      )
-        return;
-      issueKeys.current[r.id] ||= crypto.randomUUID();
-      const request = await rpc<WarehouseRequest>("mmv_issue_request", {
-        p_token: session.token,
-        p_request_id: r.id,
-        p_idempotency_key: issueKeys.current[r.id],
-        p_lines: lines,
-        p_note: "Kho xác nhận đã cấp hàng thực tế",
-        p_voucher_no: voucher[r.id].trim(),
-      });
-      if (activeToken.current !== session.token) return;
-      updateRequest(request);
-      void dispatchPush(session.token);
-      setMessage("Đã ghi nhận thực cấp và giảm tồn đúng một lần.");
-      await load(session);
+      if (!lines.some(line => line.qty > 0)) throw new Error("Cần ít nhất một dòng thực cấp lớn hơn 0; nếu chưa cấp hàng thì không xác nhận xuất.");
+      setConfirmation({ id: crypto.randomUUID(), token: session.token, kind: "issue", request: r, voucherNo: voucher[r.id].trim(), lines });
+      setConfirmationReason("");
+      setConfirmationError("");
     });
+  }
+  async function confirmPendingAction() {
+    const pending = confirmation;
+    if (!pending || !session || busy || postingConfirmation.current) return;
+    if (pending.token !== session.token || activeToken.current !== pending.token) {
+      setConfirmation(null);
+      return;
+    }
+    const reason = confirmationReason.trim();
+    if (pending.kind !== "issue" && !reason) { setConfirmationError("Vui lòng ghi rõ lý do trước khi xác nhận."); return; }
+    if (reason.length > 4000) { setConfirmationError("Lý do không được quá 4.000 ký tự."); return; }
+    if (pending.kind === "cancel" && pending.request.requester_id !== session.user.id) return;
+    if (pending.kind === "reject" && !session.can_approve) return;
+    if (pending.kind === "issue" && !isWarehouse) return;
+    postingConfirmation.current = pending.id;
+    setConfirmationError("");
+    try {
+      await action(async () => {
+        try {
+          // The intent is bound to the opening account. Never post an old
+          // confirmation after logout/account switch, even if its button was queued.
+          if (activeToken.current !== pending.token) return;
+          let request: WarehouseRequest;
+          if (pending.kind === "issue") {
+            issueKeys.current[pending.request.id] ||= crypto.randomUUID();
+            request = await rpc<WarehouseRequest>("mmv_issue_request", {
+              p_token: pending.token, p_request_id: pending.request.id,
+              p_idempotency_key: issueKeys.current[pending.request.id],
+              p_lines: pending.lines, p_note: "Kho xác nhận đã cấp hàng thực tế", p_voucher_no: pending.voucherNo,
+            });
+          } else if (pending.kind === "cancel") {
+            request = await rpc<WarehouseRequest>("mmv_cancel_request", { p_token: pending.token, p_request_id: pending.request.id, p_note: reason });
+          } else {
+            request = await rpc<WarehouseRequest>("mmv_approve_request", { p_token: pending.token, p_request_id: pending.request.id, p_approve: false, p_note: reason });
+          }
+          if (activeToken.current !== pending.token) return;
+          updateRequest(request);
+          setConfirmation(null);
+          setConfirmationReason("");
+          setMessage(pending.kind === "issue" ? "Đã ghi nhận thực cấp và giảm tồn đúng một lần." : pending.kind === "cancel" ? "Đã hủy yêu cầu của bạn; lịch sử và lý do vẫn được lưu, không trừ tồn." : "Đã từ chối yêu cầu; lý do đã được lưu vào lịch sử.");
+          void dispatchPush(pending.token);
+          await load(session);
+        } catch (e) {
+          if (activeToken.current === pending.token) setConfirmationError((e as Error).message);
+          throw e;
+        }
+      });
+    } finally {
+      if (postingConfirmation.current === pending.id) postingConfirmation.current = null;
+    }
   }
   async function exportDay() {
     if (!session) return;
@@ -953,6 +1053,7 @@ export default function WorkflowApp() {
           </>
         )}
       </main>
+      {session && confirmation && confirmation.token === session.token ? <ConfirmationDialog pending={confirmation} reason={confirmationReason} error={confirmationError} busy={busy} onReason={setConfirmationReason} onClose={() => { if (!busy && !postingConfirmation.current) { setConfirmation(null); setConfirmationReason(""); setConfirmationError(""); } }} onConfirm={() => void confirmPendingAction()} /> : null}
       <InstallAppPrompt />
     </div>
   );

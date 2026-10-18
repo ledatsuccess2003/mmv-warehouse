@@ -156,17 +156,49 @@ function itemHeight(line: Pick<PrintLine, 'description' | 'material_code' | 'uni
   const count = Math.max(wrappedLines(line.description, 42), wrappedLines(line.material_code, 17),
     wrappedLines(line.unit, 8), wrappedLines(line.remarks ?? '', 13))
   const height = Math.max(13.2, count * 12 + 2)
-  if (height > 490) throw new Error(`Mã ${line.material_code}: nội dung quá dài để in nguyên vẹn trên một trang A4.`)
+  if (height > 409.5) throw new Error(`Mã ${line.material_code}: nội dung quá dài để in nguyên vẹn trên một trang A4.`)
   return height
 }
 
-function paginate(lines: PrintLine[]) {
+function metadataHeight(value: string, charactersPerLine: number) {
+  const count = wrappedLines(value, charactersPerLine)
+  const height = count === 1 ? 13.2 : count * 12 + 2
+  if (height > 409.5) throw new Error('Thông tin đầu phiếu quá dài để in nguyên vẹn; cần chia nội dung trước khi xuất.')
+  return height
+}
+
+function headerHeights(request: RequestOutRequest, draft: boolean) {
+  const titles = [draft ? 'PHIẾU YÊU CẦU - CHƯA XUẤT KHO' : `ISSUE VOUCHER-No:${request.voucher_no}`,
+    draft ? `DỰ THẢO / REQUEST: ${request.request_no}` : `XUẤT KHO SỐ: ${request.voucher_no}`]
+  // A conservative Arial-10 glyph allowance handles narrow codes as well as a long run
+  // of wide M/W or Vietnamese/full-width glyphs, without reducing the font size.
+  const jobWidth = Array.from(request.job_code).reduce((sum, char) => sum +
+    (/[^\u0000-\u00ff]|[&%#@]/.test(char) ? 2 : /[MWmw]/.test(char) ? 1.8 : /[A-Z]/.test(char) ? 1.6 : /[a-z0-9]/.test(char) ? 1.1 : .6), 0)
+  const jobLines = Math.max(1, Math.ceil(jobWidth / 13))
+  const jobHeight = jobLines === 1 ? 13.2 : jobLines * 12 + 2
+  if (jobHeight > 409.5) throw new Error('JOB quá dài để in nguyên vẹn trên A4.')
+  return { titles: titles.map(value => Math.max(17.4, wrappedLines(value, 35) * 17.4)),
+    receiver: metadataHeight(`${draft ? 'Requester(người yêu cầu)' : 'Receiver(người nhận)'}: ${request.receiver_name || request.requester_name}`, 50),
+    vessel: metadataHeight(`Vessel(tên tàu): ${request.vessel ?? ''}`, 50),
+    job: Math.max(jobHeight, metadataHeight(`Liferaft No: ${request.liferaft_no ?? ''}`, 32)) }
+}
+
+function printBodyBudget(request: RequestOutRequest, draft = false) {
+  const h = headerHeights(request, draft)
+  const budget = 490 - (h.titles[0] - 17.4) - (h.titles[1] - 17.4)
+    - (h.receiver - 13.2) - (h.vessel - 13.2) - (h.job - 13.2)
+  if (budget < 14) throw new Error('Thông tin đầu phiếu quá dài, không còn đủ chỗ cho dòng vật tư trên A4.')
+  return budget
+}
+
+function paginate(lines: PrintLine[], budget = 490) {
   const pages: PrintLine[][] = []
   let page: PrintLine[] = []
   let height = 0
   for (const line of lines) {
     const nextHeight = itemHeight(line)
-    if (page.length && (page.length === 24 || height + nextHeight > 490)) {
+    if (nextHeight > budget) throw new Error(`Mã ${line.material_code}: nội dung vật tư và đầu phiếu quá dài để in nguyên vẹn trên A4.`)
+    if (page.length && (page.length === 24 || height + nextHeight > budget)) {
       pages.push(page); page = []; height = 0
     }
     page.push(line); height += nextHeight
@@ -178,19 +210,29 @@ function paginate(lines: PrintLine[]) {
 function addVoucherPage(ws: XLSX.WorkSheet, request: RequestOutRequest, lines: PrintLine[],
   day: string, start: number, lineOffset: number, draft = false): RequestOutPage {
   const title: Style = { font: { name: 'Arial', sz: 14, bold: true, color: { rgb: 'FF0000' } },
-    alignment: { horizontal: 'center', vertical: 'center' } }
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true } }
+  const heights = headerHeights(request, draft)
   cell(ws, start, 1, draft ? 'PHIẾU YÊU CẦU - CHƯA XUẤT KHO' : `ISSUE VOUCHER-No:${request.voucher_no}`, title)
   cell(ws, start + 1, 1, draft ? `DỰ THẢO / REQUEST: ${request.request_no}` : `XUẤT KHO SỐ: ${request.voucher_no}`, title)
   merge(ws, start, 1, 6); merge(ws, start + 1, 1, 6)
-  rowHeight(ws, start, 17.4); rowHeight(ws, start + 1, 17.4)
+  rowHeight(ws, start, heights.titles[0]); rowHeight(ws, start + 1, heights.titles[1])
   const [year, month, date] = day.split('-')
   cell(ws, start + 2, 1, `${draft ? 'Date(ngày yêu cầu)' : 'Date(ngày xuất)'}: ${date}/${month}/${year.slice(2)}`)
   cell(ws, start + 3, 1, `${draft ? 'Requester(người yêu cầu)' : 'Receiver(người nhận)'}: ${request.receiver_name || request.requester_name}`)
   cell(ws, start + 4, 1, `Vessel(tên tàu): ${request.vessel ?? ''}`)
   cell(ws, start + 5, 1, `Liferaft No: ${request.liferaft_no ?? ''}`)
   cell(ws, start + 5, 4, 'Job No.')
-  cell(ws, start + 5, 6, request.job_code)
+  cell(ws, start + 5, 6, request.job_code, { alignment: { horizontal: 'left', vertical: 'center', wrapText: true } })
+  for (let i = 2; i <= 4; i++) {
+    merge(ws, start + i, 1, 6)
+    ws[`A${start + i}`].s.alignment.wrapText = true
+  }
+  merge(ws, start + 5, 1, 3)
+  ws[`A${start + 5}`].s.alignment.wrapText = true
   for (let i = 2; i <= 6; i++) rowHeight(ws, start + i, 13.2)
+  rowHeight(ws, start + 3, heights.receiver)
+  rowHeight(ws, start + 4, heights.vessel)
+  rowHeight(ws, start + 5, heights.job)
   const headerStyle: Style = { font: { name: 'Arial', sz: 10, bold: true },
     alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
     border: { top: THIN, bottom: THIN, left: THIN, right: THIN } }
@@ -198,7 +240,7 @@ function addVoucherPage(ws: XLSX.WorkSheet, request: RequestOutRequest, lines: P
   rowHeight(ws, start + 7, 39.6)
   // Source has 24 table lines per ordinary page. Keep that footprint unless long text needs the space.
   const usedHeight = lines.reduce((sum, line) => sum + itemHeight(line), 0)
-  const blankCount = Math.min(24 - lines.length, Math.max(0, Math.floor((490 - usedHeight) / 13.2)))
+  const blankCount = Math.min(24 - lines.length, Math.max(0, Math.floor((printBodyBudget(request, draft) - usedHeight) / 13.2)))
   const tableRows = lines.length + blankCount
   for (let i = 0; i < tableRows; i++) {
     const line = lines[i]
@@ -280,7 +322,7 @@ export function buildRequestOutWorkbook(requests: RequestOutRequest[], date: str
   let nextRow = 1
   for (const request of issued) {
     let offset = 0
-    for (const lines of paginate(request.items.map(line => ({ ...line, quantity: line.qty_issued })))) {
+    for (const lines of paginate(request.items.map(line => ({ ...line, quantity: line.qty_issued })), printBodyBudget(request))) {
       const page = addVoucherPage(out, request, lines, date, nextRow, offset)
       wb.requestOutPages.push(page)
       nextRow = page.endRow + 2
@@ -374,33 +416,58 @@ export function buildRequestVoucherWorkbook(input: RequestVoucherInput): Request
     status: input.status, issued_at: null, requester_name: input.requester_name,
     job_code: input.job_code, vessel: input.vessel, items: [] }
   let row = 1, offset = 0
-  for (const pageLines of paginate(lines)) {
+  for (const pageLines of paginate(lines, printBodyBudget(header, true))) {
     const page = addVoucherPage(ws, header, pageLines, date, row, offset, true)
     wb.requestOutPages.push(page); row = page.endRow + 2; offset += pageLines.length
   }
   ws['!ref'] = `A1:F${row - 2}`
   const status = { pending: 'Chờ duyệt', approved: 'Đã duyệt - chưa cấp', rejected: 'Đã từ chối', cancelled: 'Đã hủy' }[input.status]
-  const info: (string | number)[][] = [
-    ['BẢN YÊU CẦU - KHÔNG PHẢI CHỨNG TỪ XUẤT THỰC TẾ'],
+  const metadata: [string, string][] = [
     ['Request ID', String(input.id)], ['Số yêu cầu', input.request_no], ['Trạng thái tại thời điểm tải', status!],
     ['Ngày giờ tạo gốc (ISO)', input.created_at], ['Ngày yêu cầu (giờ Việt Nam)', date],
     ['Người yêu cầu', input.requester_name], ['JOB', input.job_code], ['Tàu', input.vessel ?? ''],
     ['Ghi chú yêu cầu gốc', input.note ?? ''],
     ['Sử dụng', 'Chỉ để xem/in yêu cầu. Không xác nhận đã cấp, không dùng để trừ Material hoặc nhập Movement 2.'],
-    [], ['LINE ID', 'CODE', 'DESCRIPTION', 'UNIT', 'REQUESTED QTY', 'REMARKS'],
-    ...input.lines.map(line => [String(line.id), line.material_code, line.description, line.unit, line.requested_qty, line.remarks ?? '']),
   ]
+  const info: (string | number)[][] = [['BẢN YÊU CẦU - KHÔNG PHẢI CHỨNG TỪ XUẤT THỰC TẾ']]
+  for (const [label, value] of metadata) {
+    const characters = Array.from(value)
+    const parts: string[] = []
+    for (let i = 0; i < characters.length; i += 600) parts.push(characters.slice(i, i + 600).join(''))
+    if (!parts.length) parts.push('')
+    parts.forEach((part, i) => info.push([i ? `${label} (tiếp ${i + 1}/${parts.length})` : label, part]))
+  }
+  const metadataEnd = info.length
+  info.push([], ['LINE ID', 'CODE', 'DESCRIPTION', 'UNIT', 'REQUESTED QTY', 'REMARKS'])
+  const tableHeader = info.length
+  info.push(...input.lines.map(line => [String(line.id), line.material_code, line.description, line.unit, line.requested_qty, line.remarks ?? '']))
   const details = XLSX.utils.aoa_to_sheet(info)
-  details['!cols'] = [36, 36, 55, 12, 20, 40].map(wch => ({ wch }))
+  details['!cols'] = [26, 24, 38, 10, 18, 28].map(wch => ({ wch }))
+  details['!margins'] = { left: .3, right: .3, top: .4, bottom: .4, header: .2, footer: .2 }
+  merge(details, 1, 1, 6)
+  rowHeight(details, 1, 26)
+  for (let row = 2; row <= metadataEnd; row++) {
+    merge(details, row, 2, 6)
+    rowHeight(details, row, Math.max(metadataHeight(String(info[row - 1][0]), 22), metadataHeight(String(info[row - 1][1]), 60)))
+  }
+  rowHeight(details, tableHeader, 28)
+  const safeChars = [13, 12, 19, 5, 9, 14]
+  for (let row = tableHeader + 1; row <= info.length; row++) {
+    const height = Math.max(...info[row - 1].map((value, i) => metadataHeight(String(value), safeChars[i])))
+    rowHeight(details, row, height)
+  }
   for (let r = 0; r < info.length; r++) for (let c = 0; c < info[r].length; c++) {
     const address = XLSX.utils.encode_cell({ r, c })
     if (details[address]) details[address].s = { font: { name: 'Arial', sz: 10 },
       alignment: { wrapText: true, vertical: 'top' } }
   }
+  details.A1.s.font.bold = true
+  for (let c = 0; c < 6; c++) details[XLSX.utils.encode_cell({ r: tableHeader - 1, c })].s.font.bold = true
   XLSX.utils.book_append_sheet(wb, ws, 'REQUEST')
   XLSX.utils.book_append_sheet(wb, details, 'Thong tin yeu cau')
   wb.Workbook = { Names: [{ Name: '_xlnm.Print_Area', Sheet: 0,
-    Ref: wb.requestOutPages.map(page => `'REQUEST'!$A$${page.startRow}:$F$${page.endRow}`).join(',') }] }
+    Ref: wb.requestOutPages.map(page => `'REQUEST'!$A$${page.startRow}:$F$${page.endRow}`).join(',') },
+    { Name: '_xlnm.Print_Area', Sheet: 1, Ref: `'Thong tin yeu cau'!$A$1:$F$${info.length}` }] }
   return wb
 }
 
@@ -439,6 +506,18 @@ export function serializeRequestOutWorkbook(wb: RequestOutWorkbook): Uint8Array 
   xml = xml.replace(/(<pageMargins\b[^>]*\/>)/, `$1${setup}${headerFooter}${rowBreaks}`)
   // Leading slash replaces the existing ZIP member. Without it CFB can append a duplicate.
   XLSX.CFB.utils.cfb_add(zip, `/${path}`, new TextEncoder().encode(xml))
+  if (draft) {
+    const detailsPath = 'xl/worksheets/sheet2.xml'
+    const detailsIndex = zip.FullPaths.findIndex((name: string) => name.endsWith(`/${detailsPath}`))
+    if (detailsIndex < 0) throw new Error('Không tìm thấy trang thông tin yêu cầu.')
+    let detailsXml = new TextDecoder().decode(zip.FileIndex[detailsIndex].content)
+    detailsXml = detailsXml.replace(/<sheetPr(?:\s[^>]*)?>[\s\S]*?<\/sheetPr>|<sheetPr\b[^>]*\/>/g, '')
+      .replace(/(<worksheet\b[^>]*>)/, '$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>')
+      .replace(/<pageSetup\b[^>]*(?:\/>|>[\s\S]*?<\/pageSetup>)/g, '')
+    detailsXml = detailsXml.replace(/(<pageMargins\b[^>]*\/>)/,
+      '$1<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>')
+    XLSX.CFB.utils.cfb_add(zip, `/${detailsPath}`, new TextEncoder().encode(detailsXml))
+  }
   const bytes = XLSX.CFB.write(zip, { type: 'array', fileType: 'zip', compression: true })
   return new Uint8Array(bytes)
 }
