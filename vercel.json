@@ -1,9 +1,10 @@
 {
   "buildCommand": "cd mmv-warehouse && npm install && npm run build",
   "outputDirectory": "mmv-warehouse/dist",
-  "installCommand": "echo skip-root-install",
+  "installCommand": "npm ci",
   "framework": null,
+  "crons": [{"path":"/api/push?dispatch=1","schedule":"0 1 * * *"}],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

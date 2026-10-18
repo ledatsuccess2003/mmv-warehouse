@@ -15,3 +15,8 @@ movement-app-xuong-*.txt
 *.xlsx
 *.pdf
 *.docx
+
+.vercel
+.env*
+node_modules/
+.npm-cache/

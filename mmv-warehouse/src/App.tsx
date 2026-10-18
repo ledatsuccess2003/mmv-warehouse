@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoadingScreen } from './components/ui/spinner'
 import { ConfigurationRequired } from './components/DataConfiguration'
 import { isSupabaseConfigured } from './lib/supabase'
+import WorkflowApp from './pages/WorkflowApp'
 
 // Login va Home nap thang: day la hai man dau tien moi nguoi deu thay,
 // cho them mot vong tai o day chi lam cham cam nhan.
@@ -31,6 +32,7 @@ import { InstallAppPrompt } from './components/InstallAppPrompt'
 
 export default function App() {
   if (!isSupabaseConfigured) return <ConfigurationRequired />
+  if (import.meta.env.VITE_WORKFLOW_V2 === 'true') return <WorkflowApp />
 
   return (
     <>
