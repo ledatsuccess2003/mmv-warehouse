@@ -51,6 +51,7 @@ const statusName: Record<string, string> = {
 const time = (s: string) =>
   new Date(s).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 type Cart = { code: string; qty: number };
+const wrappingActionClass = "max-w-full min-w-0 whitespace-normal break-words text-center";
 type PendingConfirmation = {
   id: string;
   token: string;
@@ -104,7 +105,7 @@ function ConfirmationDialog({ pending, reason, error, busy, onReason, onClose, o
           <p className="mt-2 text-sm text-slate-600">Lý do được lưu trên máy chủ; {pending.kind === "cancel" ? "hủy" : "từ chối"} không xóa dấu vết và không trừ tồn.</p>
         </>}
         {error ? <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-red-800">{error}</p> : null}
-        <div className="mt-5 flex flex-wrap justify-end gap-3"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Quay lại, chưa thực hiện</Button><Button type="submit" disabled={busy || (pending.kind !== "issue" && !reason.trim())}>{busy ? "Đang lưu…" : confirmLabel}</Button></div>
+        <div className="mt-5 flex flex-wrap justify-end gap-3"><Button className={wrappingActionClass} type="button" variant="outline" disabled={busy} onClick={onClose}>Quay lại, chưa thực hiện</Button><Button className={wrappingActionClass} type="submit" disabled={busy || (pending.kind !== "issue" && !reason.trim())}>{busy ? "Đang lưu…" : confirmLabel}</Button></div>
       </form>
     </div>
   </div>;
@@ -155,11 +156,11 @@ function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity,
     </table></div>
     <p className="text-sm text-slate-600">Phê duyệt: {r.approvals.length ? r.approvals.map(a => `${a.user_name || a.user_id}: ${a.decision || (a.decided_at ? (a.approved ? "đồng ý" : "từ chối") : "chờ")}`).join(" · ") : "Đang chờ hai người duyệt"}</p>
     <div className="mt-3 flex flex-wrap gap-2">
-      {r.status !== "issued" ? <Button disabled={busy} variant="outline" onClick={() => onDownload(r, false)}><Download className="h-4 w-4" />Tải phiếu yêu cầu (chưa xuất kho)</Button> : canIssue ? <Button disabled={busy} variant="outline" onClick={() => onDownload(r, true)}><Download className="h-4 w-4" />Tải OUT thực cấp của phiếu</Button> : null}
+      {r.status !== "issued" ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, false)}><Download className="h-4 w-4 shrink-0" />Tải phiếu yêu cầu (chưa xuất kho)</Button> : canIssue ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, true)}><Download className="h-4 w-4 shrink-0" />Tải OUT thực cấp của phiếu</Button> : null}
       {session.can_approve && r.status === "pending" ? <><Button disabled={busy} onClick={() => onApprove(r, true)}><CheckCircle className="h-4 w-4" />Đồng ý</Button><Button disabled={busy} variant="outline" onClick={() => onApprove(r, false)}>Từ chối</Button></> : null}
-      {r.requester_id === session.user.id && ["pending", "approved"].includes(r.status) ? <Button disabled={busy} variant="outline" onClick={() => onCancel(r)}>Hủy yêu cầu của tôi</Button> : null}
+      {r.requester_id === session.user.id && ["pending", "approved"].includes(r.status) ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onCancel(r)}>Hủy yêu cầu của tôi</Button> : null}
     </div>
-    {canIssue && r.status === "approved" ? <div className="mt-4 flex flex-wrap gap-3"><Input className="max-w-xs" aria-label={`Số phiếu ${r.request_no}`} placeholder="Số SIV đã đối chiếu với Excel" value={voucher} onChange={e => onVoucher(e.target.value)} /><Button disabled={busy} onClick={() => onIssue(r)}>Xác nhận đã cấp thực tế</Button><p className="w-full text-sm text-amber-800">Nhập số thực cấp cho từng dòng; nhập 0 nếu không cấp. Không tự lấy số yêu cầu làm số thực cấp.</p></div> : null}
+    {canIssue && r.status === "approved" ? <div className="mt-4 flex flex-wrap gap-3"><Input className="max-w-xs" aria-label={`Số phiếu ${r.request_no}`} placeholder="Số SIV đã đối chiếu với Excel" value={voucher} onChange={e => onVoucher(e.target.value)} /><Button className={wrappingActionClass} disabled={busy} onClick={() => onIssue(r)}>Xác nhận đã cấp thực tế</Button><p className="w-full text-sm text-amber-800">Nhập số thực cấp cho từng dòng; nhập 0 nếu không cấp. Không tự lấy số yêu cầu làm số thực cấp.</p></div> : null}
     <details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Dấu vết xử lý được lưu trên máy chủ</summary>{r.events.map((event, index) => <p className="py-1" key={`${event.created_at}-${index}`}>{time(event.created_at)} · {event.actor_name} · {event.event_type || event.action} {event.note}</p>)}</details>
   </article>;
 }
@@ -769,6 +770,7 @@ export default function WorkflowApp() {
                 Làm mới
               </Button>
               <Button
+                className={wrappingActionClass}
                 variant="outline"
                 onClick={() =>
                   action(async () => {
@@ -804,7 +806,7 @@ export default function WorkflowApp() {
               >
                 Duyệt / Cấp gần đây
               </Button>
-              <Button variant={tab === "history" ? "default" : "outline"} onClick={() => setTab("history")}>Lịch sử đầy đủ / Tải phiếu</Button>
+              <Button className={wrappingActionClass} variant={tab === "history" ? "default" : "outline"} onClick={() => setTab("history")}>Lịch sử đầy đủ / Tải phiếu</Button>
               <Button
                 variant={tab === "notices" ? "default" : "outline"}
                 onClick={() => setTab("notices")}
@@ -929,7 +931,7 @@ export default function WorkflowApp() {
                     />
                   </label>
                   <Button
-                    className="w-full"
+                    className={`w-full ${wrappingActionClass}`}
                     disabled={busy || !cart.length}
                     onClick={submit}
                   >
@@ -955,8 +957,8 @@ export default function WorkflowApp() {
                         onChange={(e) => setDay(e.target.value)}
                       />
                     </label>
-                    <Button disabled={busy} onClick={exportDay}>
-                      <Download className="h-4 w-4" />
+                    <Button className={wrappingActionClass} disabled={busy} onClick={exportDay}>
+                      <Download className="h-4 w-4 shrink-0" />
                       Tải OUT + Movement 2
                     </Button>
                     <p className="w-full text-sm text-amber-800">
@@ -981,7 +983,7 @@ export default function WorkflowApp() {
                   <label>Ngày chọn (giờ Việt Nam)<Input type="date" value={day} onChange={e => setDay(e.target.value)} /></label>
                   <Button variant="outline" onClick={() => setDay(today)}>Hôm nay</Button>
                   <Button variant="outline" onClick={() => setDay(shiftVietnamDay(today, -1))}>Hôm qua</Button>
-                  {isWarehouse ? <Button disabled={busy || !validVietnamDay(day)} onClick={exportDay}><Download className="h-4 w-4" />Tải OUT + Movement 2 ngày chọn</Button> : null}
+                  {isWarehouse ? <Button className={wrappingActionClass} disabled={busy || !validVietnamDay(day)} onClick={exportDay}><Download className="h-4 w-4 shrink-0" />Tải OUT + Movement 2 ngày chọn</Button> : null}
                 </div>
                 {summaries[day] ? <>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1004,7 +1006,7 @@ export default function WorkflowApp() {
                   <label>Tạo từ ngày<Input type="date" value={historyFilter.from} onChange={e => setHistoryFilter(previous => ({ ...previous, from: e.target.value }))} /></label>
                   <label>Tạo đến hết ngày<Input type="date" value={historyFilter.to} onChange={e => setHistoryFilter(previous => ({ ...previous, to: e.target.value }))} /></label>
                   <label className="grid gap-1">Trạng thái<select aria-label="Trạng thái lịch sử" className="h-10 rounded-md border border-input bg-white px-3" value={historyFilter.status} onChange={e => setHistoryFilter(previous => ({ ...previous, status: e.target.value }))}><option value="">Tất cả</option>{Object.entries(statusName).map(([status, label]) => <option key={status} value={status}>{label}</option>)}</select></label>
-                  <Button variant="outline" disabled={historyLoading} onClick={() => void loadHistory(session, historyFilter, historyGeneration.current)}><RefreshCw className="h-4 w-4" />Làm mới lịch sử từ trang đầu</Button>
+                  <Button className={wrappingActionClass} variant="outline" disabled={historyLoading} onClick={() => void loadHistory(session, historyFilter, historyGeneration.current)}><RefreshCw className="h-4 w-4 shrink-0" />Làm mới lịch sử từ trang đầu</Button>
                   <Button variant="outline" onClick={() => { setHistoryFilter({ from: "", to: "", status: "" }); setHistoryText(""); }}>Bỏ bộ lọc</Button>
                 </div>
                 <label className="block">Lọc nội dung trong các phiếu đã tải<Input value={historyText} onChange={e => setHistoryText(e.target.value)} placeholder="Mã vật tư, tên, JOB, tên người, số phiếu…" /></label>
@@ -1013,7 +1015,7 @@ export default function WorkflowApp() {
               {history.items.filter(r => r.id !== focusedRequest?.id && `${r.id} ${r.request_no} ${r.job_code} ${r.vessel || ""} ${r.requester_name} ${r.lines.map(line => `${line.material_code} ${line.description}`).join(" ")}`.toLocaleLowerCase("vi").includes(historyText.trim().toLocaleLowerCase("vi"))).map(renderRequest)}
               {historyLoading ? <p role="status" className="p-3">Đang lấy lịch sử từ máy chủ…</p> : null}
               {!historyLoading && !history.items.length ? <p className="rounded-xl bg-white p-5">Không có phiếu phù hợp trong quyền tài khoản.</p> : null}
-              {history.has_more ? <Button className="w-full" disabled={historyLoading || !history.next_cursor} onClick={() => void loadHistory(session, historyFilter, historyGeneration.current, history.next_cursor)}>Tải tiếp 50 phiếu cũ hơn</Button> : history.items.length ? <p className="text-center text-sm text-slate-500">Đã tải hết các phiếu của bộ lọc tại lần truy vấn này.</p> : null}
+              {history.has_more ? <Button className={`w-full ${wrappingActionClass}`} disabled={historyLoading || !history.next_cursor} onClick={() => void loadHistory(session, historyFilter, historyGeneration.current, history.next_cursor)}>Tải tiếp 50 phiếu cũ hơn</Button> : history.items.length ? <p className="text-center text-sm text-slate-500">Đã tải hết các phiếu của bộ lọc tại lần truy vấn này.</p> : null}
             </section>}
             {tab === "notices" && (
               <section className="space-y-3">
