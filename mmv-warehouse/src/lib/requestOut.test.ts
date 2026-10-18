@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import * as XLSX from 'xlsx-js-style'
-import { buildRequestOutWorkbook, serializeRequestOutWorkbook, type RequestOutRequest } from './requestOut'
+import { buildRequestOutWorkbook, buildRequestVoucherWorkbook, serializeRequestOutWorkbook,
+  type RequestOutRequest, type RequestVoucherInput } from './requestOut'
 
 function request(over: Partial<RequestOutRequest> = {}): RequestOutRequest {
   return { id: 'synthetic-request-1', request_no: 'REQ-TEST-01', voucher_no: '2610TEST01',
@@ -8,6 +9,14 @@ function request(over: Partial<RequestOutRequest> = {}): RequestOutRequest {
     issued_by_name: 'Test Warehouse', job_code: '26-TEST-1', vessel: 'SYNTHETIC VESSEL',
     liferaft_no: '', items: [{ id: 'line-1', material_code: 'TEST-001',
       description: 'Synthetic gloves', unit: 'pair', qty_issued: 2 }], ...over }
+}
+
+function requested(over: Partial<RequestVoucherInput> = {}): RequestVoucherInput {
+  return { id: 'requested-monday', request_no: 'REQUEST-TEST-MONDAY',
+    created_at: '2026-10-12T01:05:00Z', requester_name: 'SYNTHETIC REQUESTER',
+    job_code: '26-TEST-1', vessel: 'SYNTHETIC VESSEL', note: 'Original purpose note', status: 'pending',
+    lines: [{ id: 'line-requested-1', material_code: 'TEST-REQUEST', description: 'Synthetic Material name',
+      unit: 'pair', requested_qty: 3.5 }], ...over }
 }
 
 function xml(wb: ReturnType<typeof buildRequestOutWorkbook>, path: string) {
@@ -146,6 +155,10 @@ describe('Movement 2 transfer and native XLSX print settings', () => {
     expect(sheetXml).toContain('<pageSetUpPr fitToPage="1"/>')
     expect(sheetXml).toContain('<rowBreaks count="1" manualBreakCount="1">')
     expect(sheetXml).toContain('<brk id="36" max="16383" man="1"/>')
+    expect(sheetXml).toContain('STORE ISSUE VOUCHER(PHIẾU XUẤT KHO)')
+    expect(sheetXml).toContain('MMV-SIM.Rev.01')
+    expect(sheetXml).toContain('Feb 2021')
+    expect(sheetXml).toContain('Page &amp;P of &amp;N')
     const workbookXml = xml(wb, 'xl/workbook.xml')
     expect(workbookXml).toContain('_xlnm.Print_Area')
     expect(workbookXml).toContain('$A$1:$F$35')
@@ -164,5 +177,95 @@ describe('Movement 2 transfer and native XLSX print settings', () => {
     expect(wb.Sheets.OUT.C9.v).toBe(r.items[0].description)
     r.items[0].description = 'x'.repeat(3000)
     expect(() => buildRequestOutWorkbook([r], '2026-10-18')).toThrow('quá dài')
+  })
+})
+
+describe('historical requested-only copies remain separate from actual OUT', () => {
+  it('exports Monday requested quantities on Friday, never substituting default issued zero', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-16T09:00:00Z'))
+    try {
+      const input = requested()
+      // API records may contain issued_qty:0 before issue. The draft accepts requested_qty only.
+      Object.assign(input.lines[0], { issued_qty: 0 })
+      const wb = buildRequestVoucherWorkbook(input)
+      const sheet = wb.Sheets.REQUEST
+      expect(wb.SheetNames).toEqual(['REQUEST', 'Thong tin yeu cau'])
+      expect(sheet.A1.v).toBe('PHIẾU YÊU CẦU - CHƯA XUẤT KHO')
+      expect(sheet.A2.v).toBe('DỰ THẢO / REQUEST: REQUEST-TEST-MONDAY')
+      expect(sheet.A3.v).toBe('Date(ngày yêu cầu): 12/10/26')
+      expect(sheet.E9.v).toBe(3.5)
+      expect(sheet.A35.v).toBe('')
+      expect(sheet.E35.v).toBe('')
+      expect(wb.Sheets['Thong tin yeu cau'].B10.v).toBe('Original purpose note')
+      expect(wb.requestOutPages[0].voucherNo).toBe('')
+      expect(wb.requestOutPages[0].lineIds).toEqual([])
+      expect(wb.Sheets['Movement 2']).toBeUndefined()
+      expect(wb.Sheets['Import IDs']).toBeUndefined()
+      const sheetXml = xml(wb, 'xl/worksheets/sheet1.xml')
+      expect(sheetXml).not.toContain('ISSUE VOUCHER-No:')
+      expect(sheetXml).not.toContain('XUẤT KHO SỐ:')
+      expect(sheetXml).not.toContain('APP ID: MMV:')
+      expect(sheetXml).toContain('KHÔNG GHI GIẢM TỒN')
+      expect(xml(wb, 'xl/workbook.xml')).toContain('$A$1:$F$35')
+      const reread = XLSX.read(serializeRequestOutWorkbook(wb), { type: 'array' })
+      expect(reread.SheetNames).toEqual(['REQUEST', 'Thong tin yeu cau'])
+      expect(reread.Sheets.REQUEST.E9.v).toBe(3.5)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('retains all 25 requested lines and exact A:F geometry across two A4 draft pages', () => {
+    const input = requested()
+    input.lines = Array.from({ length: 25 }, (_, i) => ({ ...input.lines[0], id: `requested-${i}`, material_code: `TEST-REQ-${i}` }))
+    const wb = buildRequestVoucherWorkbook(input)
+    expect(wb.requestOutPages).toHaveLength(2)
+    expect(wb.Sheets.REQUEST['!cols']!.map(c => c.width)).toEqual([6.33203125, 17.33203125, 42, 9.33203125, 10, 13.6640625])
+    expect(wb.Sheets.REQUEST.B45.v).toBe('TEST-REQ-24')
+    expect(wb.Sheets.REQUEST.E45.v).toBe(3.5)
+    expect(wb.Sheets['Thong tin yeu cau']['!ref']).toBe('A1:F38')
+    const sheetXml = xml(wb, 'xl/worksheets/sheet1.xml')
+    expect(sheetXml).toContain('paperSize="9" orientation="portrait"')
+    expect(sheetXml).toContain('<brk id="36" max="16383" man="1"/>')
+    expect(sheetXml).toContain('Page &amp;P of &amp;N')
+  })
+
+  it('preserves canonical draft identifiers/names/units and treats all user text as literal data', () => {
+    const input = requested({ note: '=HYPERLINK("https://synthetic.invalid")' })
+    input.lines[0] = { ...input.lines[0], material_code: ' 000TEST ', description: '=A1 + "tên" & <gốc>', unit: ' pcs ' }
+    const wb = buildRequestVoucherWorkbook(input)
+    expect(wb.Sheets.REQUEST.B9.v).toBe(' 000TEST ')
+    expect(wb.Sheets.REQUEST.C9.v).toBe('=A1 + "tên" & <gốc>')
+    expect(wb.Sheets.REQUEST.C9.t).toBe('s')
+    expect(wb.Sheets.REQUEST.C9.f).toBeUndefined()
+    expect(wb.Sheets.REQUEST.D9.v).toBe(' pcs ')
+    expect(wb.Sheets['Thong tin yeu cau'].B10.t).toBe('s')
+    expect(wb.Sheets['Thong tin yeu cau'].B10.f).toBeUndefined()
+  })
+
+  it('does not present an already-issued request as CHƯA XUẤT KHO; rejects missing/invalid requested quantities', () => {
+    expect(() => buildRequestVoucherWorkbook(requested({ status: 'issued' }))).toThrow('OUT thực cấp')
+    expect(() => buildRequestVoucherWorkbook(requested({ status: 'unknown' }))).toThrow('Trạng thái')
+    for (const qty of [0, -1, NaN, Infinity, '2']) {
+      const input = requested()
+      input.lines[0].requested_qty = qty as number
+      expect(() => buildRequestVoucherWorkbook(input)).toThrow('số lượng yêu cầu')
+    }
+    const input = requested()
+    input.lines.push({ ...input.lines[0] })
+    expect(() => buildRequestVoucherWorkbook(input)).toThrow('Trùng ID')
+  })
+
+  it('actual Monday issues downloaded on Friday retain Monday date and same immutable import IDs', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-16T09:00:00Z'))
+    try {
+      const input = request({ issued_at: '2026-10-12T01:10:00Z' })
+      const wb = buildRequestOutWorkbook([input], '2026-10-12')
+      const again = buildRequestOutWorkbook([input], '2026-10-12')
+      expect(wb.Sheets.OUT.A3.v).toBe('Date(ngày xuất): 12/10/26')
+      expect(XLSX.SSF.format('yyyy-mm-dd', wb.Sheets['Movement 2'].D5.v)).toBe('2026-10-12')
+      expect(wb.Sheets['Import IDs'].A2.v).toBe(again.Sheets['Import IDs'].A2.v)
+      expect(() => buildRequestOutWorkbook([input], '2026-10-16')).toThrow('Không có phiếu')
+    } finally { vi.useRealTimers() }
   })
 })

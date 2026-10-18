@@ -26,6 +26,35 @@ export interface RequestOutRequest {
   items: RequestOutLine[]
 }
 
+/** A requested-only copy is not a stock issue and must never use issued_qty as its quantity. */
+export interface RequestVoucherInput {
+  id: string | number
+  request_no: string
+  created_at: string
+  requester_name: string
+  job_code: string
+  vessel?: string | null
+  note?: string | null
+  status: string
+  lines: {
+    id: string | number
+    material_code: string
+    description: string
+    unit: string
+    requested_qty: number
+    remarks?: string | null
+  }[]
+}
+
+interface PrintLine {
+  id: string | number
+  material_code: string
+  description: string
+  unit: string
+  quantity: number
+  remarks?: string | null
+}
+
 export interface RequestOutPage {
   startRow: number
   endRow: number
@@ -37,6 +66,7 @@ export interface RequestOutPage {
 export interface RequestOutWorkbook extends XLSX.WorkBook {
   /** Serializer-only print configuration, not a worksheet or hidden company data. */
   requestOutPages: RequestOutPage[]
+  requestPrintKind?: 'issued' | 'request'
 }
 
 const TIME_ZONE = 'Asia/Ho_Chi_Minh'
@@ -93,7 +123,7 @@ function excelDate(day: string) {
   return (Date.parse(`${day}T00:00:00Z`) - Date.UTC(1899, 11, 30)) / 86400000
 }
 
-function importId(request: RequestOutRequest, line: RequestOutLine) {
+function importId(request: Pick<RequestOutRequest, 'id'>, line: Pick<RequestOutLine, 'id'>) {
   return `MMV:${encodeURIComponent(identifier(request.id, 'Request ID'))}:${encodeURIComponent(identifier(line.id, 'Line ID'))}`
 }
 
@@ -122,7 +152,7 @@ function wrappedLines(value: string, width: number) {
   return value.split(/\r?\n/).reduce((count, segment) => count + Math.max(1, Math.ceil(segment.length / width)), 0)
 }
 
-function itemHeight(line: RequestOutLine) {
+function itemHeight(line: Pick<PrintLine, 'description' | 'material_code' | 'unit' | 'remarks'>) {
   const count = Math.max(wrappedLines(line.description, 42), wrappedLines(line.material_code, 17),
     wrappedLines(line.unit, 8), wrappedLines(line.remarks ?? '', 13))
   const height = Math.max(13.2, count * 12 + 2)
@@ -130,9 +160,9 @@ function itemHeight(line: RequestOutLine) {
   return height
 }
 
-function paginate(lines: RequestOutLine[]) {
-  const pages: RequestOutLine[][] = []
-  let page: RequestOutLine[] = []
+function paginate(lines: PrintLine[]) {
+  const pages: PrintLine[][] = []
+  let page: PrintLine[] = []
   let height = 0
   for (const line of lines) {
     const nextHeight = itemHeight(line)
@@ -145,17 +175,17 @@ function paginate(lines: RequestOutLine[]) {
   return pages
 }
 
-function addVoucherPage(ws: XLSX.WorkSheet, request: RequestOutRequest, lines: RequestOutLine[],
-  day: string, start: number, lineOffset: number): RequestOutPage {
+function addVoucherPage(ws: XLSX.WorkSheet, request: RequestOutRequest, lines: PrintLine[],
+  day: string, start: number, lineOffset: number, draft = false): RequestOutPage {
   const title: Style = { font: { name: 'Arial', sz: 14, bold: true, color: { rgb: 'FF0000' } },
     alignment: { horizontal: 'center', vertical: 'center' } }
-  cell(ws, start, 1, `ISSUE VOUCHER-No:${request.voucher_no}`, title)
-  cell(ws, start + 1, 1, `XUẤT KHO SỐ: ${request.voucher_no}`, title)
+  cell(ws, start, 1, draft ? 'PHIẾU YÊU CẦU - CHƯA XUẤT KHO' : `ISSUE VOUCHER-No:${request.voucher_no}`, title)
+  cell(ws, start + 1, 1, draft ? `DỰ THẢO / REQUEST: ${request.request_no}` : `XUẤT KHO SỐ: ${request.voucher_no}`, title)
   merge(ws, start, 1, 6); merge(ws, start + 1, 1, 6)
   rowHeight(ws, start, 17.4); rowHeight(ws, start + 1, 17.4)
   const [year, month, date] = day.split('-')
-  cell(ws, start + 2, 1, `Date(ngày xuất): ${date}/${month}/${year.slice(2)}`)
-  cell(ws, start + 3, 1, `Receiver(người nhận): ${request.receiver_name || request.requester_name}`)
+  cell(ws, start + 2, 1, `${draft ? 'Date(ngày yêu cầu)' : 'Date(ngày xuất)'}: ${date}/${month}/${year.slice(2)}`)
+  cell(ws, start + 3, 1, `${draft ? 'Requester(người yêu cầu)' : 'Receiver(người nhận)'}: ${request.receiver_name || request.requester_name}`)
   cell(ws, start + 4, 1, `Vessel(tên tàu): ${request.vessel ?? ''}`)
   cell(ws, start + 5, 1, `Liferaft No: ${request.liferaft_no ?? ''}`)
   cell(ws, start + 5, 4, 'Job No.')
@@ -173,7 +203,7 @@ function addVoucherPage(ws: XLSX.WorkSheet, request: RequestOutRequest, lines: R
   for (let i = 0; i < tableRows; i++) {
     const line = lines[i]
     const values = line ? [lineOffset + i + 1, line.material_code, line.description, line.unit,
-      line.qty_issued, line.remarks ?? ''] : ['', '', '', '', '', '']
+      line.quantity, line.remarks ?? ''] : ['', '', '', '', '', '']
     const row = start + 8 + i
     values.forEach((value, c) => cell(ws, row, c + 1, value, {
       alignment: { horizontal: c === 0 || c === 3 || c === 4 ? 'center' : 'left',
@@ -189,11 +219,11 @@ function addVoucherPage(ws: XLSX.WorkSheet, request: RequestOutRequest, lines: R
   cell(ws, signature, 3, 'CHECKED BY', { font: { name: 'Arial', sz: 10, bold: true } })
   cell(ws, signature, 5, 'STORE KEEPER', { font: { name: 'Arial', sz: 10, bold: true } })
   // These are names only; never generate signatures or certify an unperformed check.
-  cell(ws, signature + 1, 1, request.receiver_name || request.requester_name)
-  cell(ws, signature + 1, 5, request.issued_by_name ?? '')
+  cell(ws, signature + 1, 1, draft ? '' : request.receiver_name || request.requester_name)
+  cell(ws, signature + 1, 5, draft ? '' : request.issued_by_name ?? '')
   rowHeight(ws, signature, 13.2); rowHeight(ws, signature + 1, 13.2)
   return { startRow: start, endRow: signature + 1, requestId: String(request.id),
-    voucherNo: request.voucher_no, lineIds: lines.map(line => importId(request, line)) }
+    voucherNo: draft ? '' : request.voucher_no, lineIds: draft ? [] : lines.map(line => importId(request, line)) }
 }
 
 /**
@@ -236,6 +266,7 @@ export function buildRequestOutWorkbook(requests: RequestOutRequest[], date: str
 
   const wb = XLSX.utils.book_new() as RequestOutWorkbook
   wb.requestOutPages = []
+  wb.requestPrintKind = 'issued'
   const out: XLSX.WorkSheet = { '!cols': OUT_WIDTHS.map(width => ({ width })),
     '!margins': { left: .3, right: 0, top: 1.03, bottom: .3, header: .54, footer: 0 } }
   const movement: (string | number)[][] = [
@@ -249,7 +280,7 @@ export function buildRequestOutWorkbook(requests: RequestOutRequest[], date: str
   let nextRow = 1
   for (const request of issued) {
     let offset = 0
-    for (const lines of paginate(request.items)) {
+    for (const lines of paginate(request.items.map(line => ({ ...line, quantity: line.qty_issued })))) {
       const page = addVoucherPage(out, request, lines, date, nextRow, offset)
       wb.requestOutPages.push(page)
       nextRow = page.endRow + 2
@@ -303,12 +334,88 @@ export function buildRequestOutWorkbook(requests: RequestOutRequest[], date: str
 }
 
 /**
+ * Historical requested-only copy, including pending/approved/rejected/cancelled requests.
+ * Uses the original request timestamp, not download time. It has no SIV, stock-import
+ * identifiers or Movement 2 worksheet; a requested quantity never becomes an actual issue.
+ */
+export function buildRequestVoucherWorkbook(input: RequestVoucherInput): RequestOutWorkbook {
+  identifier(input.id, 'Request ID')
+  text(input.request_no, 'Số yêu cầu', true)
+  text(input.requester_name, 'Người yêu cầu', true)
+  text(input.job_code, 'Job code', true)
+  text(input.vessel, 'Tên tàu'); text(input.note, 'Ghi chú yêu cầu')
+  if (!['pending', 'approved', 'rejected', 'cancelled'].includes(input.status)) {
+    throw new Error(input.status === 'issued'
+      ? 'Phiếu đã cấp thực tế: hãy tải OUT thực cấp, không tạo bản CHƯA XUẤT KHO.'
+      : 'Trạng thái yêu cầu không hợp lệ.')
+  }
+  const date = calendarDate(input.created_at)
+  if (!Array.isArray(input.lines) || !input.lines.length) throw new Error('Yêu cầu chưa có dòng vật tư.')
+  const seen = new Set<string>()
+  const lines: PrintLine[] = input.lines.map(line => {
+    const id = identifier(line.id, 'Line ID')
+    if (seen.has(id)) throw new Error('Trùng ID dòng yêu cầu.')
+    seen.add(id)
+    text(line.material_code, 'Mã Material', true); text(line.description, 'Tên Material', true)
+    text(line.unit, 'ĐVT Material', true); text(line.remarks, 'Ghi chú dòng')
+    if (typeof line.requested_qty !== 'number' || !Number.isFinite(line.requested_qty) || line.requested_qty <= 0) {
+      throw new Error(`Mã ${line.material_code}: số lượng yêu cầu phải là số hữu hạn lớn hơn 0.`)
+    }
+    return { ...line, quantity: line.requested_qty }
+  })
+  const wb = XLSX.utils.book_new() as RequestOutWorkbook
+  wb.requestPrintKind = 'request'
+  wb.requestOutPages = []
+  const ws: XLSX.WorkSheet = { '!cols': OUT_WIDTHS.map(width => ({ width })),
+    '!margins': { left: .3, right: 0, top: 1.03, bottom: .3, header: .54, footer: 0 } }
+  // This internal rendering header deliberately has no SIV or physical issue timestamp.
+  // PrintLine.quantity owns the displayed requested value; it is not a qty_issued fallback.
+  const header: RequestOutRequest = { id: input.id, request_no: input.request_no, voucher_no: '',
+    status: input.status, issued_at: null, requester_name: input.requester_name,
+    job_code: input.job_code, vessel: input.vessel, items: [] }
+  let row = 1, offset = 0
+  for (const pageLines of paginate(lines)) {
+    const page = addVoucherPage(ws, header, pageLines, date, row, offset, true)
+    wb.requestOutPages.push(page); row = page.endRow + 2; offset += pageLines.length
+  }
+  ws['!ref'] = `A1:F${row - 2}`
+  const status = { pending: 'Chờ duyệt', approved: 'Đã duyệt - chưa cấp', rejected: 'Đã từ chối', cancelled: 'Đã hủy' }[input.status]
+  const info: (string | number)[][] = [
+    ['BẢN YÊU CẦU - KHÔNG PHẢI CHỨNG TỪ XUẤT THỰC TẾ'],
+    ['Request ID', String(input.id)], ['Số yêu cầu', input.request_no], ['Trạng thái tại thời điểm tải', status!],
+    ['Ngày giờ tạo gốc (ISO)', input.created_at], ['Ngày yêu cầu (giờ Việt Nam)', date],
+    ['Người yêu cầu', input.requester_name], ['JOB', input.job_code], ['Tàu', input.vessel ?? ''],
+    ['Ghi chú yêu cầu gốc', input.note ?? ''],
+    ['Sử dụng', 'Chỉ để xem/in yêu cầu. Không xác nhận đã cấp, không dùng để trừ Material hoặc nhập Movement 2.'],
+    [], ['LINE ID', 'CODE', 'DESCRIPTION', 'UNIT', 'REQUESTED QTY', 'REMARKS'],
+    ...input.lines.map(line => [String(line.id), line.material_code, line.description, line.unit, line.requested_qty, line.remarks ?? '']),
+  ]
+  const details = XLSX.utils.aoa_to_sheet(info)
+  details['!cols'] = [36, 36, 55, 12, 20, 40].map(wch => ({ wch }))
+  for (let r = 0; r < info.length; r++) for (let c = 0; c < info[r].length; c++) {
+    const address = XLSX.utils.encode_cell({ r, c })
+    if (details[address]) details[address].s = { font: { name: 'Arial', sz: 10 },
+      alignment: { wrapText: true, vertical: 'top' } }
+  }
+  XLSX.utils.book_append_sheet(wb, ws, 'REQUEST')
+  XLSX.utils.book_append_sheet(wb, details, 'Thong tin yeu cau')
+  wb.Workbook = { Names: [{ Name: '_xlnm.Print_Area', Sheet: 0,
+    Ref: wb.requestOutPages.map(page => `'REQUEST'!$A$${page.startRow}:$F$${page.endRow}`).join(',') }] }
+  return wb
+}
+
+function xmlText(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/**
  * SheetJS style exports do not emit all native page setup fields. Patch only the generated
  * sheet XML using its public CFB ZIP API; no source/template workbook or private data is read.
  * Call this serializer rather than the generic saveWorkbook helper.
  */
 export function serializeRequestOutWorkbook(wb: RequestOutWorkbook): Uint8Array {
-  if (!wb.requestOutPages?.length || wb.SheetNames[0] !== 'OUT') throw new Error('Thiếu cấu hình trang OUT.')
+  const draft = wb.requestPrintKind === 'request'
+  if (!wb.requestOutPages?.length || wb.SheetNames[0] !== (draft ? 'REQUEST' : 'OUT')) throw new Error('Thiếu cấu hình trang OUT/REQUEST.')
   const zip = XLSX.CFB.read(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), { type: 'buffer' })
   const path = 'xl/worksheets/sheet1.xml'
   const index = zip.FullPaths.findIndex((name: string) => name.endsWith(`/${path}`))
@@ -318,12 +425,18 @@ export function serializeRequestOutWorkbook(wb: RequestOutWorkbook): Uint8Array 
   xml = xml.replace(/(<worksheet\b[^>]*>)/, '$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>')
   xml = xml.replace(/<pageSetup\b[^>]*(?:\/>|>[\s\S]*?<\/pageSetup>)/g, '')
   xml = xml.replace(/<rowBreaks\b[^>]*>[\s\S]*?<\/rowBreaks>/g, '')
+  xml = xml.replace(/<headerFooter\b[^>]*>[\s\S]*?<\/headerFooter>/g, '')
   const setup = '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>'
+  const heading = draft ? '&C&"Arial,Bold"&16 PHIẾU YÊU CẦU - CHƯA XUẤT KHO'
+    : '&C&"Arial,Bold"&16 STORE ISSUE VOUCHER(PHIẾU XUẤT KHO)'
+  const footer = draft ? '&LCHƯA XUẤT KHO - KHÔNG GHI GIẢM TỒN&R&8 Page &P of &N'
+    : '&LMMV-SIM.Rev.01&CFeb 2021&R&8 Page &P of &N'
+  const headerFooter = `<headerFooter><oddHeader>${xmlText(heading)}</oddHeader><oddFooter>${xmlText(footer)}</oddFooter></headerFooter>`
   const breaks = wb.requestOutPages.slice(0, -1).map(page =>
     `<brk id="${page.endRow + 1}" max="16383" man="1"/>`).join('')
   const rowBreaks = breaks ? `<rowBreaks count="${wb.requestOutPages.length - 1}" manualBreakCount="${wb.requestOutPages.length - 1}">${breaks}</rowBreaks>` : ''
   // OOXML ordering: pageMargins, pageSetup, headerFooter, rowBreaks, ...
-  xml = xml.replace(/(<pageMargins\b[^>]*\/>)/, `$1${setup}${rowBreaks}`)
+  xml = xml.replace(/(<pageMargins\b[^>]*\/>)/, `$1${setup}${headerFooter}${rowBreaks}`)
   // Leading slash replaces the existing ZIP member. Without it CFB can append a duplicate.
   XLSX.CFB.utils.cfb_add(zip, `/${path}`, new TextEncoder().encode(xml))
   const bytes = XLSX.CFB.write(zip, { type: 'array', fileType: 'zip', compression: true })
@@ -344,4 +457,9 @@ export function saveRequestOutWorkbook(wb: RequestOutWorkbook, filename: string)
   link.download = filename
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export function saveRequestVoucherWorkbook(wb: RequestOutWorkbook, filename: string): void {
+  if (wb.requestPrintKind !== 'request') throw new Error('Đây không phải bản yêu cầu chưa xuất kho.')
+  saveRequestOutWorkbook(wb, filename)
 }

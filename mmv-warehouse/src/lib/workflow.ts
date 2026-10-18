@@ -68,6 +68,103 @@ export type WarehouseNotification = {
   read_at?: string;
   request_id?: string;
 };
+export type RequestHistoryCursor = { created_at: string; id: string };
+export type RequestHistoryPage = {
+  items: WarehouseRequest[];
+  has_more: boolean;
+  next_cursor: RequestHistoryCursor | null;
+  total_count: number;
+};
+export type RequestHistoryFilter = { from: string; to: string; status: string };
+export type WarehouseDaySummary = {
+  date: string;
+  created_requests: number;
+  requesters: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  cancelled: number;
+  issued_requests: number;
+  issued_requesters: number;
+  issued_lines: number;
+  issued_by_item: {
+    material_code: string;
+    description: string;
+    unit: string;
+    quantity: number;
+  }[];
+};
+
+function normalizeRequest(raw: Record<string, unknown>): WarehouseRequest {
+  const approvals = Array.isArray(raw.approvals) ? raw.approvals : [];
+  const events = Array.isArray(raw.events) ? raw.events : [];
+  return {
+    ...raw,
+    request_no: String(raw.request_no ?? ""),
+    lines: Array.isArray(raw.lines) ? raw.lines : [],
+    approvals: approvals.map((a: Record<string, unknown>) => ({
+      ...a,
+      user_id: a.approver_id ?? a.user_id,
+      user_name: a.approver_name ?? a.user_name,
+    })),
+    events: events.map((e: Record<string, unknown>) => ({
+      ...e,
+      event_type: e.kind ?? e.event_type ?? e.action,
+      note: (e.details as { note?: string } | undefined)?.note ?? e.note ?? "",
+    })),
+  } as WarehouseRequest;
+}
+
+/** New server rows replace same-ID cache rows without dropping older loaded pages. */
+export function mergeRequestPages(
+  previous: WarehouseRequest[],
+  incoming: WarehouseRequest[],
+): WarehouseRequest[] {
+  const rows = new Map(previous.map((r) => [r.id, r]));
+  for (const request of incoming) rows.set(request.id, request);
+  return [...rows.values()].sort((a, b) => {
+    const dateDifference = Date.parse(b.created_at) - Date.parse(a.created_at);
+    return dateDifference || (a.id === b.id ? 0 : a.id < b.id ? 1 : -1);
+  });
+}
+
+export function matchesHistoryFilter(
+  request: WarehouseRequest,
+  filter: RequestHistoryFilter,
+) {
+  const createdDay = vietnamDate(new Date(request.created_at));
+  return (
+    (!filter.from || createdDay >= filter.from) &&
+    (!filter.to || createdDay <= filter.to) &&
+    (!filter.status || request.status === filter.status)
+  );
+}
+
+export function requestIdFromInput(input: string): string | null {
+  const text = input.trim();
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuid.test(text)) return text.toLowerCase();
+  try {
+    const value = new URL(text).searchParams.get("request") || "";
+    return uuid.test(value) ? value.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function validVietnamDay(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const parsed = new Date(`${day}T12:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day;
+}
+
+export function shiftVietnamDay(day: string, days: number): string {
+  if (!validVietnamDay(day) || !Number.isInteger(days))
+    throw new Error("Ngày Việt Nam không hợp lệ");
+  const parsed = new Date(`${day}T12:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
 
 export async function rpc<T>(
   name: string,
@@ -86,25 +183,12 @@ export async function rpc<T>(
   if (data?.ok === false)
     throw new Error(data.error || "Thao tác không thành công");
   if (data?.user) return { ...data, can_approve: !!data.user.can_approve } as T;
-  if (
-    Array.isArray(data) &&
-    (name === "mmv_requests" || name === "mmv_export_day")
-  ) {
-    return data.map((r) => ({
-      ...r,
-      request_no: String(r.request_no),
-      approvals: (r.approvals || []).map((a: Record<string, unknown>) => ({
-        ...a,
-        user_id: a.approver_id,
-        user_name: a.approver_name,
-      })),
-      events: (r.events || []).map((e: Record<string, unknown>) => ({
-        ...e,
-        event_type: e.kind,
-        note: (e.details as { note?: string })?.note || "",
-      })),
-    })) as T;
-  }
+  if (Array.isArray(data) && (name === "mmv_requests" || name === "mmv_export_day"))
+    return data.map(normalizeRequest) as T;
+  if (name === "mmv_history" && data && Array.isArray(data.items))
+    return { ...data, items: data.items.map(normalizeRequest) } as T;
+  if (data && ["mmv_request", "mmv_export_request", "mmv_submit_request", "mmv_approve_request", "mmv_cancel_request", "mmv_issue_request"].includes(name))
+    return normalizeRequest(data) as T;
   return data as T;
 }
 const storage = "mmv.workflow.session.v2";

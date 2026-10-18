@@ -23,6 +23,11 @@ import {
   vietnamDate,
   enablePush,
   dispatchPush,
+  mergeRequestPages,
+  matchesHistoryFilter,
+  requestIdFromInput,
+  shiftVietnamDay,
+  validVietnamDay,
 } from "@/lib/workflow";
 import type {
   WarehouseSession,
@@ -30,6 +35,10 @@ import type {
   WarehouseMaterial,
   WarehouseRequest,
   WarehouseNotification,
+  RequestHistoryPage,
+  RequestHistoryFilter,
+  RequestHistoryCursor,
+  WarehouseDaySummary,
 } from "@/lib/workflow";
 
 const statusName: Record<string, string> = {
@@ -42,6 +51,60 @@ const statusName: Record<string, string> = {
 const time = (s: string) =>
   new Date(s).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 type Cart = { code: string; qty: number };
+const emptyHistory = (): RequestHistoryPage => ({ items: [], has_more: false, next_cursor: null, total_count: 0 });
+const physicalExportInput = (r: WarehouseRequest) => ({
+  id: r.id, request_no: r.request_no, voucher_no: r.voucher_no || "",
+  status: "issued" as const, issued_at: r.issued_at!, requester_name: r.requester_name,
+  issued_by_name: r.issued_by_name, job_code: r.job_code, vessel: r.vessel,
+  items: r.lines.filter(line => Number(line.issued_qty) > 0).map(line => ({
+    id: String(line.id), material_code: line.material_code, description: line.description,
+    unit: line.unit, qty_issued: Number(line.issued_qty),
+  })),
+});
+
+type RequestCardProps = {
+  request: WarehouseRequest;
+  session: WarehouseSession;
+  busy: boolean;
+  issueQty: Record<string, string>;
+  voucher: string;
+  onQuantity: (id: string, value: string) => void;
+  onVoucher: (value: string) => void;
+  onApprove: (request: WarehouseRequest, yes: boolean) => void;
+  onIssue: (request: WarehouseRequest) => void;
+  onCancel: (request: WarehouseRequest) => void;
+  onDownload: (request: WarehouseRequest, physical: boolean) => void;
+};
+
+function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity, onVoucher, onApprove, onIssue, onCancel, onDownload }: RequestCardProps) {
+  const canIssue = ["admin", "warehouse"].includes(session.user.role);
+  return <article id={`request-${r.id}`} className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className="flex flex-wrap items-start gap-3">
+      <h2 className="mr-auto text-lg font-bold">#{r.request_no} · {r.job_code}</h2>
+      <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-900">{statusName[r.status] || r.status}</span>
+    </div>
+    <p className="my-2 text-sm text-slate-500">{r.requester_name} · Tạo {time(r.created_at)} {r.vessel ? `· ${r.vessel}` : ""}</p>
+    <p className="break-all text-xs text-slate-500">ID phiếu: {r.id}</p>
+    {r.issued_at ? <p className="mt-1 text-sm text-emerald-800">Thực cấp {time(r.issued_at)} · SIV {r.voucher_no || "chưa có"}</p> : null}
+    {r.note ? <p className="mt-2">{r.note}</p> : null}
+    <div className="overflow-x-auto"><table className="my-3 w-full text-left text-sm">
+      <thead><tr className="border-b"><th className="py-2">Mã / Tên chuẩn</th><th>ĐVT</th><th>Yêu cầu</th><th>Thực cấp</th></tr></thead>
+      <tbody>{r.lines.map(l => <tr key={l.id} className="border-b">
+        <td className="py-3 pr-2"><b>{l.material_code}</b><br />{l.description}</td><td>{l.unit}</td><td>{l.requested_qty}</td>
+        <td>{r.status === "approved" && canIssue ? <Input aria-label={`Thực cấp ${l.material_code} ${r.request_no}`} className="w-24" type="number" min="0" max={l.requested_qty} step="any" value={issueQty[l.id] ?? ""} placeholder="Nhập thực cấp" onChange={e => onQuantity(l.id, e.target.value)} /> : r.status === "issued" ? (l.issued_qty ?? "Chưa ghi nhận") : "Chưa cấp"}</td>
+      </tr>)}</tbody>
+    </table></div>
+    <p className="text-sm text-slate-600">Phê duyệt: {r.approvals.length ? r.approvals.map(a => `${a.user_name || a.user_id}: ${a.decision || (a.decided_at ? (a.approved ? "đồng ý" : "từ chối") : "chờ")}`).join(" · ") : "Đang chờ hai người duyệt"}</p>
+    <div className="mt-3 flex flex-wrap gap-2">
+      {r.status !== "issued" ? <Button disabled={busy} variant="outline" onClick={() => onDownload(r, false)}><Download className="h-4 w-4" />Tải phiếu yêu cầu (chưa xuất kho)</Button> : canIssue ? <Button disabled={busy} variant="outline" onClick={() => onDownload(r, true)}><Download className="h-4 w-4" />Tải OUT thực cấp của phiếu</Button> : null}
+      {session.can_approve && r.status === "pending" ? <><Button disabled={busy} onClick={() => onApprove(r, true)}><CheckCircle className="h-4 w-4" />Đồng ý</Button><Button disabled={busy} variant="outline" onClick={() => onApprove(r, false)}>Từ chối</Button></> : null}
+      {r.requester_id === session.user.id && ["pending", "approved"].includes(r.status) ? <Button disabled={busy} variant="outline" onClick={() => onCancel(r)}>Hủy yêu cầu của tôi</Button> : null}
+    </div>
+    {canIssue && r.status === "approved" ? <div className="mt-4 flex flex-wrap gap-3"><Input className="max-w-xs" aria-label={`Số phiếu ${r.request_no}`} placeholder="Số SIV đã đối chiếu với Excel" value={voucher} onChange={e => onVoucher(e.target.value)} /><Button disabled={busy} onClick={() => onIssue(r)}>Xác nhận đã cấp thực tế</Button><p className="w-full text-sm text-amber-800">Nhập số thực cấp cho từng dòng; nhập 0 nếu không cấp. Không tự lấy số yêu cầu làm số thực cấp.</p></div> : null}
+    <details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Dấu vết xử lý được lưu trên máy chủ</summary>{r.events.map((event, index) => <p className="py-1" key={`${event.created_at}-${index}`}>{time(event.created_at)} · {event.actor_name} · {event.event_type || event.action} {event.note}</p>)}</details>
+  </article>;
+}
+
 export default function WorkflowApp() {
   const [session, setSession] = useState<WarehouseSession | null>(null),
     [users, setUsers] = useState<WarehouseUser[]>([]),
@@ -58,17 +121,31 @@ export default function WorkflowApp() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
-    [tab, setTab] = useState<"pick" | "requests" | "notices">("pick"),
+    [tab, setTab] = useState<"pick" | "requests" | "history" | "notices">("pick"),
     [day, setDay] = useState(vietnamDate());
   const [lastSync, setLastSync] = useState(""),
     [issueQty, setIssueQty] = useState<Record<string, string>>({}),
     [voucher, setVoucher] = useState<Record<string, string>>({});
+  const [history, setHistory] = useState<RequestHistoryPage>(emptyHistory),
+    [historyFilter, setHistoryFilter] = useState<RequestHistoryFilter>({ from: "", to: "", status: "" }),
+    [historyLoading, setHistoryLoading] = useState(false),
+    [historySearch, setHistorySearch] = useState(""),
+    [historyText, setHistoryText] = useState(""),
+    [focusedRequest, setFocusedRequest] = useState<WarehouseRequest | null>(null),
+    [summaries, setSummaries] = useState<Record<string, WarehouseDaySummary>>({}),
+    [today, setToday] = useState(vietnamDate());
   const submitKey = useRef(crypto.randomUUID()),
     issueKeys = useRef<Record<string, string>>({}),
     syncing = useRef(new Set<string>()),
-    activeToken = useRef<string | null>(null);
-  const isWarehouse =
-    session && ["admin", "warehouse"].includes(session.user.role);
+    activeToken = useRef<string | null>(null),
+    historyGeneration = useRef(0),
+    historyScope = useRef(""),
+    actionGeneration = useRef(0),
+    identityGeneration = useRef(0),
+    historyFilterRef = useRef(historyFilter),
+    historyLoadingRef = useRef(new Set<string>());
+  historyFilterRef.current = historyFilter;
+  const isWarehouse = Boolean(session && ["admin", "warehouse"].includes(session.user.role));
   const load = useCallback(async (s: WarehouseSession) => {
     if (syncing.current.has(s.token)) return;
     syncing.current.add(s.token);
@@ -84,9 +161,15 @@ export default function WorkflowApp() {
       if (activeToken.current !== s.token) return;
       setMaterials(m);
       setRequests(r);
+      setHistory(previous => {
+        const loadedIds = new Set(previous.items.map(item => item.id));
+        const updates = r.filter(item => loadedIds.has(item.id));
+        return { ...previous, items: mergeRequestPages(previous.items, updates).filter(item => matchesHistoryFilter(item, historyFilterRef.current)) };
+      });
+      setFocusedRequest(previous => previous ? (r.find(item => item.id === previous.id) || previous) : null);
       setNotices(n);
       setLastSync(new Date().toISOString());
-      setError("");
+      setToday(vietnamDate());
       void dispatchPush(s.token);
     } catch (e) {
       if (activeToken.current === s.token) setError((e as Error).message);
@@ -94,18 +177,49 @@ export default function WorkflowApp() {
       syncing.current.delete(s.token);
     }
   }, []);
+  const loadHistory = useCallback(async (s: WarehouseSession, filter: RequestHistoryFilter, generation: number, cursor: RequestHistoryCursor | null = null) => {
+    if ((filter.from && !validVietnamDay(filter.from)) || (filter.to && !validVietnamDay(filter.to)) || (filter.from && filter.to && filter.from > filter.to)) {
+      setError("Khoảng ngày tạo phiếu không hợp lệ.");
+      setHistoryLoading(false);
+      return;
+    }
+    const key = `${s.token}:${generation}:${cursor?.id || "first"}`;
+    if (historyLoadingRef.current.has(key)) return;
+    historyLoadingRef.current.add(key);
+    setHistoryLoading(true);
+    try {
+      const page = await rpc<RequestHistoryPage>("mmv_history", {
+        p_token: s.token, p_from: filter.from || null, p_to: filter.to || null,
+        p_status: filter.status || null, p_before_created_at: cursor?.created_at || null,
+        p_before_id: cursor?.id || null, p_limit: 50,
+      });
+      if (activeToken.current !== s.token || historyGeneration.current !== generation) return;
+      setHistory(previous => {
+        // An explicit refresh starts a new authoritative query. Ordinary live
+        // polling only updates existing IDs and never drops loaded older pages.
+        if (!cursor) return page;
+        return { ...page, items: mergeRequestPages(previous.items, page.items).filter(item => matchesHistoryFilter(item, filter)) };
+      });
+    } catch (e) {
+      if (activeToken.current === s.token && historyGeneration.current === generation) setError((e as Error).message);
+    } finally {
+      historyLoadingRef.current.delete(key);
+      if (activeToken.current === s.token && historyGeneration.current === generation) setHistoryLoading(false);
+    }
+  }, []);
   useEffect(() => {
     let disposed = false;
+    const initialIdentity = identityGeneration.current;
     rpc<WarehouseUser[]>("mmv_directory")
       .then((d) => {
         if (!disposed) setUsers(d);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => { if (!disposed) setError(e.message); });
     const old = savedSession();
     if (old)
       rpc<WarehouseSession>("mmv_session", { p_token: old.token })
         .then((s) => {
-          if (!disposed && !activeToken.current) {
+          if (!disposed && initialIdentity === identityGeneration.current && !activeToken.current) {
             const fresh = { ...old, ...s, token: old.token };
             activeToken.current = old.token;
             setSession(fresh);
@@ -113,7 +227,7 @@ export default function WorkflowApp() {
           }
         })
         .catch(() => {
-          if (!activeToken.current && savedSession()?.token === old.token)
+          if (initialIdentity === identityGeneration.current && !activeToken.current && savedSession()?.token === old.token)
             keepSession(null);
         });
     return () => {
@@ -124,12 +238,24 @@ export default function WorkflowApp() {
     const expired = (event: Event) => {
       if ((event as CustomEvent).detail?.token !== activeToken.current) return;
       activeToken.current = null;
+      identityGeneration.current += 1;
       keepSession(null);
       setSession(null);
       setMaterials([]);
       setRequests([]);
       setNotices([]);
       setCart([]);
+      setIssueQty({});
+      setVoucher({});
+      setHistorySearch("");
+      setHistoryText("");
+      setHistory(emptyHistory());
+      setFocusedRequest(null);
+      setSummaries({});
+      historyGeneration.current += 1;
+      historyScope.current = "";
+      actionGeneration.current += 1;
+      setBusy(false);
       setError("Phiên đã hết hạn. Vui lòng chọn tên và đăng nhập lại.");
     };
     window.addEventListener("mmv-session-expired", expired);
@@ -149,34 +275,91 @@ export default function WorkflowApp() {
     };
   }, [session, load]);
   useEffect(() => {
+    if (!session || tab !== "history") return;
+    const scope = `${session.token}:${JSON.stringify(historyFilter)}`;
+    if (historyScope.current === scope) return;
+    historyScope.current = scope;
+    const generation = ++historyGeneration.current;
+    setHistory(emptyHistory());
+    void loadHistory(session, historyFilter, generation);
+  }, [session, tab, historyFilter, loadHistory]);
+  useEffect(() => {
+    if (!session) return;
+    const currentToken = session.token;
+    let disposed = false;
+    let inFlight = false;
+    const refresh = async () => {
+      if (disposed || inFlight) return;
+      inFlight = true;
+      const currentDay = vietnamDate();
+      const days = [...new Set([currentDay, shiftVietnamDay(currentDay, -1), ...(validVietnamDay(day) ? [day] : [])])];
+      try {
+        const values = await Promise.all(days.map(p_date => rpc<WarehouseDaySummary>("mmv_day_summary", { p_token: currentToken, p_date })));
+        if (disposed || activeToken.current !== currentToken) return;
+        setSummaries(Object.fromEntries(values.map(value => [value.date, value])));
+        setToday(currentDay);
+      } catch (e) {
+        if (!disposed && activeToken.current === currentToken) setError((e as Error).message);
+      } finally {
+        inFlight = false;
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 10000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [session, day]);
+  const openRequest = useCallback(async (s: WarehouseSession, input: string) => {
+    const id = requestIdFromInput(input);
+    if (!id) throw new Error("Nhập đúng UUID phiếu hoặc link chứa ?request=UUID.");
+    const request = await rpc<WarehouseRequest>("mmv_request", { p_token: s.token, p_request_id: id });
+    if (activeToken.current !== s.token) return;
+    setFocusedRequest(request);
+    setTab("history");
+    const url = new URL(window.location.href);
+    url.searchParams.set("request", id);
+    window.history.replaceState(null, "", url);
+  }, []);
+  useEffect(() => {
+    if (!session) return;
     const id = new URL(window.location.href).searchParams.get("request");
-    if (id && requests.some((r) => r.id === id)) {
-      setTab("requests");
-      requestAnimationFrame(() =>
-        document
-          .getElementById(`request-${id}`)
-          ?.scrollIntoView({ block: "center" }),
-      );
-    }
-  }, [requests]);
+    if (id) void openRequest(session, id).catch(e => { if (activeToken.current === session.token) setError(e.message); });
+  }, [session, openRequest]);
+  const focusedRequestId = focusedRequest?.id;
+  useEffect(() => {
+    if (!focusedRequestId || tab !== "history") return;
+    requestAnimationFrame(() => document.getElementById(`request-${focusedRequestId}`)?.scrollIntoView({ block: "center" }));
+  }, [focusedRequestId, tab]);
   async function action(fn: () => Promise<void>) {
+    const generation = ++actionGeneration.current;
     setBusy(true);
     setError("");
     setMessage("");
     try {
       await fn();
     } catch (e) {
-      setError((e as Error).message);
+      if (actionGeneration.current === generation) setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (actionGeneration.current === generation) setBusy(false);
     }
   }
   async function login(u: WarehouseUser, password = "") {
+    identityGeneration.current += 1;
     await action(async () => {
+      const generation = actionGeneration.current;
       const s = await rpc<WarehouseSession>("mmv_login", {
         p_user_id: u.id,
         p_pin: password,
       });
+      if (generation !== actionGeneration.current) return;
+      setHistory(emptyHistory());
+      setSummaries({});
+      setFocusedRequest(null);
+      historyScope.current = "";
+      historyGeneration.current += 1;
+      setIssueQty({});
+      setVoucher({});
+      submitKey.current = crypto.randomUUID();
+      issueKeys.current = {};
       activeToken.current = s.token;
       keepSession(s);
       setSession(s);
@@ -186,9 +369,12 @@ export default function WorkflowApp() {
     });
   }
   async function logout() {
+    const oldToken = session?.token;
     activeToken.current = null;
-    if (session)
-      await rpc("mmv_logout", { p_token: session.token }).catch(() => {});
+    identityGeneration.current += 1;
+    actionGeneration.current += 1;
+    historyGeneration.current += 1;
+    historyScope.current = "";
     keepSession(null);
     setSession(null);
     setRequests([]);
@@ -196,18 +382,32 @@ export default function WorkflowApp() {
     setNotices([]);
     setCart([]);
     setPin("");
+    setIssueQty({});
+    setVoucher({});
+    setHistorySearch("");
+    setHistoryText("");
+    setBusy(false);
+    setHistory(emptyHistory());
+    setFocusedRequest(null);
+    setSummaries({});
+    if (oldToken) await rpc("mmv_logout", { p_token: oldToken }).catch(() => {});
   }
   const visible = materials.filter((m) =>
     `${m.code} ${m.description} ${m.description_vi || ""}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  function updateRequest(request: WarehouseRequest) {
+    setRequests(previous => mergeRequestPages(previous, [request]));
+    setHistory(previous => ({ ...previous, items: mergeRequestPages(previous.items, previous.items.some(item => item.id === request.id) ? [request] : []).filter(item => matchesHistoryFilter(item, historyFilterRef.current)) }));
+    setFocusedRequest(previous => previous?.id === request.id ? request : previous);
+  }
   async function submit() {
     if (!session) return;
     await action(async () => {
       if (!job.trim()) throw new Error("Cần nhập JOB thực tế");
       if (!cart.length) throw new Error("Chưa chọn vật tư");
-      await rpc("mmv_submit_request", {
+      const request = await rpc<WarehouseRequest>("mmv_submit_request", {
         p_token: session.token,
         p_idempotency_key: submitKey.current,
         p_job_code: job.trim(),
@@ -215,6 +415,8 @@ export default function WorkflowApp() {
         p_note: note.trim(),
         p_vessel: vessel.trim() || null,
       });
+      if (activeToken.current !== session.token) return;
+      updateRequest(request);
       void dispatchPush(session.token);
       submitKey.current = crypto.randomUUID();
       setCart([]);
@@ -228,21 +430,38 @@ export default function WorkflowApp() {
   }
   async function approve(r: WarehouseRequest, yes: boolean) {
     if (!session) return;
+    const reason = yes ? "Đồng ý theo phiếu yêu cầu" : window.prompt("Lý do từ chối yêu cầu:");
+    if (reason === null) return;
     await action(async () => {
-      await rpc("mmv_approve_request", {
+      if (!reason.trim()) throw new Error("Cần ghi lý do từ chối.");
+      const request = await rpc<WarehouseRequest>("mmv_approve_request", {
         p_token: session.token,
         p_request_id: r.id,
         p_approve: yes,
-        p_note: yes
-          ? "Đồng ý theo phiếu yêu cầu"
-          : "Từ chối - cần trao đổi lại với người yêu cầu",
+        p_note: reason.trim(),
       });
+      if (activeToken.current !== session.token) return;
+      updateRequest(request);
       void dispatchPush(session.token);
       setMessage(
         yes
           ? "Đã lưu quyết định duyệt. Chỉ kho xác nhận cấp thực tế mới trừ tồn."
           : "Đã từ chối yêu cầu.",
       );
+      await load(session);
+    });
+  }
+  async function cancelRequest(r: WarehouseRequest) {
+    if (!session || r.requester_id !== session.user.id) return;
+    const reason = window.prompt(`Lý do hủy yêu cầu #${r.request_no}:`);
+    if (reason === null) return;
+    await action(async () => {
+      if (!reason.trim()) throw new Error("Cần ghi lý do hủy yêu cầu.");
+      const request = await rpc<WarehouseRequest>("mmv_cancel_request", { p_token: session.token, p_request_id: r.id, p_note: reason.trim() });
+      if (activeToken.current !== session.token) return;
+      updateRequest(request);
+      setMessage("Đã hủy yêu cầu của bạn; lịch sử và lý do vẫn được lưu, không trừ tồn.");
+      void dispatchPush(session.token);
       await load(session);
     });
   }
@@ -256,7 +475,7 @@ export default function WorkflowApp() {
       const lines = r.lines.map((l) => ({
         line_id: l.id,
         qty: validActualQty(
-          issueQty[String(l.id)] ?? l.requested_qty,
+          issueQty[String(l.id)] ?? "",
           Number(l.requested_qty),
         ),
       }));
@@ -269,7 +488,7 @@ export default function WorkflowApp() {
       )
         return;
       issueKeys.current[r.id] ||= crypto.randomUUID();
-      await rpc("mmv_issue_request", {
+      const request = await rpc<WarehouseRequest>("mmv_issue_request", {
         p_token: session.token,
         p_request_id: r.id,
         p_idempotency_key: issueKeys.current[r.id],
@@ -277,6 +496,8 @@ export default function WorkflowApp() {
         p_note: "Kho xác nhận đã cấp hàng thực tế",
         p_voucher_no: voucher[r.id].trim(),
       });
+      if (activeToken.current !== session.token) return;
+      updateRequest(request);
       void dispatchPush(session.token);
       setMessage("Đã ghi nhận thực cấp và giảm tồn đúng một lần.");
       await load(session);
@@ -285,11 +506,14 @@ export default function WorkflowApp() {
   async function exportDay() {
     if (!session) return;
     await action(async () => {
+      if (!isWarehouse) throw new Error("Chỉ kho/admin được tải phiếu xuất thực tế.");
+      if (!validVietnamDay(day)) throw new Error("Chọn ngày thực cấp hợp lệ.");
       // Fetch a fresh server result for the chosen day; never export a pending cart or stale page cache.
       const data = await rpc<WarehouseRequest[]>("mmv_export_day", {
         p_token: session.token,
         p_date: day,
       });
+      if (activeToken.current !== session.token) return;
       const issued = data.filter(
         (r) =>
           r.status === "issued" &&
@@ -301,32 +525,38 @@ export default function WorkflowApp() {
       const { buildRequestOutWorkbook, saveRequestOutWorkbook } = await import(
         "@/lib/requestOut"
       );
+      if (activeToken.current !== session.token) return;
       const wb = buildRequestOutWorkbook(
-        issued.map((r) => ({
-          id: r.id,
-          request_no: r.request_no,
-          voucher_no: r.voucher_no || "",
-          status: "issued" as const,
-          issued_at: r.issued_at!,
-          requester_name: r.requester_name,
-          issued_by_name: r.issued_by_name,
-          job_code: r.job_code,
-          vessel: r.vessel,
-          items: r.lines
-            .filter((l) => Number(l.issued_qty) > 0)
-            .map((l) => ({
-              id: String(l.id),
-              material_code: l.material_code,
-              description: l.description,
-              unit: l.unit,
-              qty_issued: Number(l.issued_qty),
-            })),
-        })),
+        issued.map(physicalExportInput),
         day,
       );
       saveRequestOutWorkbook(wb, `OUT_MMV_${day}.xlsx`);
+      setMessage("Đã tải bản sao. Phiếu và lịch sử vẫn được lưu trên máy chủ; tải lại không trừ tồn thêm.");
     });
   }
+  async function downloadRequest(r: WarehouseRequest, physical: boolean) {
+    if (!session) return;
+    await action(async () => {
+      if (physical && !isWarehouse) throw new Error("Chỉ kho/admin được tải phiếu OUT thực cấp.");
+      const fresh = await rpc<WarehouseRequest>(physical ? "mmv_export_request" : "mmv_request", { p_token: session.token, p_request_id: r.id });
+      if (activeToken.current !== session.token) return;
+      updateRequest(fresh);
+      const exporter = await import("@/lib/requestOut");
+      if (activeToken.current !== session.token) return;
+      if (physical) {
+        if (fresh.status !== "issued" || !fresh.issued_at) throw new Error("Phiếu chưa được xác nhận cấp thực tế.");
+        const issuedDay = vietnamDate(new Date(fresh.issued_at));
+        const workbook = exporter.buildRequestOutWorkbook([physicalExportInput(fresh)], issuedDay);
+        exporter.saveRequestOutWorkbook(workbook, `OUT_MMV_${issuedDay}_${fresh.id}.xlsx`);
+      } else {
+        if (fresh.status === "issued") throw new Error("Phiếu đã thực cấp. Kho/admin cần tải OUT thực cấp, không dùng bản yêu cầu.");
+        const workbook = exporter.buildRequestVoucherWorkbook(fresh);
+        exporter.saveRequestVoucherWorkbook(workbook, `YEU_CAU_MMV_${fresh.id}.xlsx`);
+      }
+      setMessage("Đã tải bản sao mới từ máy chủ. Tải file không xóa phiếu, không xác nhận cấp hàng và không trừ tồn thêm.");
+    });
+  }
+  const renderRequest = (r: WarehouseRequest) => session ? <RequestCard key={r.id} request={r} session={session} busy={busy} issueQty={issueQty} voucher={voucher[r.id] || ""} onQuantity={(id, value) => setIssueQty(previous => ({ ...previous, [id]: value }))} onVoucher={value => setVoucher(previous => ({ ...previous, [r.id]: value }))} onApprove={approve} onIssue={issue} onCancel={cancelRequest} onDownload={downloadRequest} /> : null;
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="bg-[#143c60] text-white">
@@ -451,6 +681,16 @@ export default function WorkflowApp() {
                 Bật thông báo điện thoại
               </Button>
             </section>
+            <section aria-label="Tổng hợp theo ngày Việt Nam" className="grid gap-3 sm:grid-cols-2">
+              {[{ date: today, label: "Hôm nay" }, { date: shiftVietnamDay(today, -1), label: "Hôm qua" }].map(({ date, label }) => {
+                const summary = summaries[date];
+                return <button key={date} onClick={() => { setDay(date); setTab("history"); }} className="rounded-2xl border border-slate-200 bg-white p-4 text-left hover:border-blue-500">
+                  <h2 className="font-bold text-blue-900">{label} · {date}</h2>
+                  {summary ? <><p className="mt-2"><b>{summary.created_requests}</b> phiếu tạo mới · <b>{summary.requesters}</b> người yêu cầu riêng biệt</p><p><b>{summary.issued_requests}</b> phiếu thực cấp · <b>{summary.issued_requesters}</b> người yêu cầu đã được cấp (đếm riêng biệt)</p></> : <p className="mt-2 text-slate-500">Đang lấy tổng hợp từ máy chủ…</p>}
+                </button>;
+              })}
+            </section>
+            <p className="text-sm text-slate-600">Tổng hợp toàn bộ dữ liệu trong quyền tài khoản, không tính từ danh sách 500 phiếu gần đây. Ngày tính theo giờ Việt Nam.</p>
             <nav className="flex flex-wrap gap-2" aria-label="Kho MMV">
               <Button
                 variant={tab === "pick" ? "default" : "outline"}
@@ -462,8 +702,9 @@ export default function WorkflowApp() {
                 variant={tab === "requests" ? "default" : "outline"}
                 onClick={() => setTab("requests")}
               >
-                Duyệt / Cấp / Lịch sử
+                Duyệt / Cấp gần đây
               </Button>
+              <Button variant={tab === "history" ? "default" : "outline"} onClick={() => setTab("history")}>Lịch sử đầy đủ / Tải phiếu</Button>
               <Button
                 variant={tab === "notices" ? "default" : "outline"}
                 onClick={() => setTab("notices")}
@@ -471,6 +712,7 @@ export default function WorkflowApp() {
                 Thông báo ({notices.filter((n) => !n.read_at).length})
               </Button>
             </nav>
+            <p className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">Yêu cầu, phê duyệt, số thực cấp và lịch sử được lưu trên máy chủ Supabase, không chỉ trên thiết bị này. Tải file là lấy bản sao, không xóa phiếu và không trừ tồn thêm. Không bắt buộc cài app; thông báo nền còn phụ thuộc trình duyệt và quyền thiết bị.</p>
             {tab === "pick" && (
               <div className="grid gap-5 lg:grid-cols-[1fr_400px]">
                 <section>
@@ -623,132 +865,8 @@ export default function WorkflowApp() {
                     </p>
                   </div>
                 )}
-                {requests.map((r) => (
-                  <article
-                    id={`request-${r.id}`}
-                    key={r.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5"
-                  >
-                    <div className="flex flex-wrap items-start gap-3">
-                      <h2 className="mr-auto text-lg font-bold">
-                        {r.request_no} · {r.job_code}
-                      </h2>
-                      <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-900">
-                        {statusName[r.status] || r.status}
-                      </span>
-                    </div>
-                    <p className="my-2 text-sm text-slate-500">
-                      {r.requester_name} · {time(r.created_at)}{" "}
-                      {r.vessel && `· ${r.vessel}`}
-                    </p>
-                    {r.note && <p>{r.note}</p>}
-                    <div className="overflow-x-auto">
-                      <table className="my-3 w-full text-left text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="py-2">Mã / Tên chuẩn</th>
-                            <th>ĐVT</th>
-                            <th>Yêu cầu</th>
-                            <th>Thực cấp</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {r.lines.map((l) => (
-                            <tr key={l.id} className="border-b">
-                              <td className="py-3 pr-2">
-                                <b>{l.material_code}</b>
-                                <br />
-                                {l.description}
-                              </td>
-                              <td>{l.unit}</td>
-                              <td>{l.requested_qty}</td>
-                              <td>
-                                {r.status === "approved" && isWarehouse ? (
-                                  <Input
-                                    aria-label={`Thực cấp ${l.material_code} ${r.request_no}`}
-                                    className="w-24"
-                                    type="number"
-                                    min="0"
-                                    max={l.requested_qty}
-                                    step="any"
-                                    value={
-                                      issueQty[String(l.id)] ?? l.requested_qty
-                                    }
-                                    onChange={(e) =>
-                                      setIssueQty((q) => ({
-                                        ...q,
-                                        [String(l.id)]: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                ) : (
-                                  (l.issued_qty ?? "Chưa cấp")
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="text-sm text-slate-600">
-                      Phê duyệt:{" "}
-                      {r.approvals
-                        .map(
-                          (a) =>
-                            `${a.user_name || a.user_id}: ${a.decision || (a.decided_at ? (a.approved ? "đồng ý" : "từ chối") : "chờ")}`,
-                        )
-                        .join(" · ")}
-                    </p>
-                    {session.can_approve && r.status === "pending" && (
-                      <div className="mt-3 flex gap-2">
-                        <Button
-                          disabled={busy}
-                          onClick={() => approve(r, true)}
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                          Đồng ý
-                        </Button>
-                        <Button
-                          disabled={busy}
-                          variant="outline"
-                          onClick={() => approve(r, false)}
-                        >
-                          Từ chối
-                        </Button>
-                      </div>
-                    )}
-                    {isWarehouse && r.status === "approved" && (
-                      <div className="mt-4 flex flex-wrap gap-3">
-                        <Input
-                          className="max-w-xs"
-                          aria-label={`Số phiếu ${r.request_no}`}
-                          placeholder="Số SIV đã đối chiếu với Excel"
-                          value={voucher[r.id] || ""}
-                          onChange={(e) =>
-                            setVoucher((v) => ({
-                              ...v,
-                              [r.id]: e.target.value,
-                            }))
-                          }
-                        />
-                        <Button disabled={busy} onClick={() => issue(r)}>
-                          Xác nhận đã cấp thực tế
-                        </Button>
-                      </div>
-                    )}
-                    <details className="mt-3 text-sm">
-                      <summary className="cursor-pointer font-semibold">
-                        Lịch sử xử lý
-                      </summary>
-                      {r.events.map((ev, i) => (
-                        <p className="py-1" key={i}>
-                          {time(ev.created_at)} · {ev.actor_name} ·{" "}
-                          {ev.event_type || ev.action} {ev.note}
-                        </p>
-                      ))}
-                    </details>
-                  </article>
-                ))}
+                <p className="text-sm text-slate-600">Phiếu gần đây (tối đa 500 phiếu). Mở “Lịch sử đầy đủ” để tìm và tải các phiếu cũ hơn.</p>
+                {requests.map(renderRequest)}
                 {!requests.length && (
                   <p className="rounded-xl bg-white p-6">
                     Chưa có yêu cầu trong phạm vi tài khoản này.
@@ -756,6 +874,47 @@ export default function WorkflowApp() {
                 )}
               </section>
             )}
+            {tab === "history" && <section className="space-y-4">
+              <div className="space-y-4 rounded-2xl bg-white p-5 shadow-sm">
+                <h2 className="text-xl font-bold">Tổng hợp và tải phiếu theo ngày thực cấp</h2>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label>Ngày chọn (giờ Việt Nam)<Input type="date" value={day} onChange={e => setDay(e.target.value)} /></label>
+                  <Button variant="outline" onClick={() => setDay(today)}>Hôm nay</Button>
+                  <Button variant="outline" onClick={() => setDay(shiftVietnamDay(today, -1))}>Hôm qua</Button>
+                  {isWarehouse ? <Button disabled={busy || !validVietnamDay(day)} onClick={exportDay}><Download className="h-4 w-4" />Tải OUT + Movement 2 ngày chọn</Button> : null}
+                </div>
+                {summaries[day] ? <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-blue-50 p-3"><h3 className="font-bold">Phiếu được tạo trong ngày {day}</h3><p>{summaries[day].created_requests} phiếu · {summaries[day].requesters} người yêu cầu riêng biệt</p><p className="text-sm">Trạng thái hiện tại: {summaries[day].pending} chờ duyệt · {summaries[day].approved} đã duyệt chờ cấp · {summaries[day].rejected} từ chối · {summaries[day].cancelled} đã hủy</p></div>
+                    <div className="rounded-xl bg-emerald-50 p-3"><h3 className="font-bold">Hàng thực cấp trong ngày {day}</h3><p>{summaries[day].issued_requests} phiếu · {summaries[day].issued_requesters} người yêu cầu đã được cấp (đếm riêng biệt) · {summaries[day].issued_lines} dòng thực cấp</p><p className="text-sm">Ngày thực cấp có thể khác ngày tạo yêu cầu. Không cộng chung số lượng khác mã/ĐVT.</p></div>
+                  </div>
+                  {summaries[day].issued_by_item.length ? <div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="py-2 text-left font-semibold">Chi tiết vật tư thực cấp trong ngày {day}</caption><thead><tr className="border-b"><th className="py-2">Mã chuẩn</th><th>Tên chuẩn</th><th>ĐVT</th><th className="text-right">Thực cấp</th></tr></thead><tbody>{summaries[day].issued_by_item.map(item => <tr className="border-b" key={`${item.material_code}-${item.unit}`}><td className="py-2 pr-3">{item.material_code}</td><td className="pr-3">{item.description}</td><td>{item.unit}</td><td className="text-right">{item.quantity}</td></tr>)}</tbody></table></div> : <p className="text-sm text-slate-600">Không có dòng vật tư đã thực cấp trong ngày chọn.</p>}
+                </> : <p className="text-slate-500">{validVietnamDay(day) ? "Đang lấy tổng hợp ngày chọn…" : "Chọn ngày hợp lệ để xem tổng hợp."}</p>}
+                <p className="text-sm text-amber-800">Có thể tải lại ngày cũ, ví dụ thứ Sáu tải lại phiếu của thứ Hai. File giữ ngày thực cấp gốc. Chỉ kho/admin tải OUT thực cấp; OUT chưa tự trừ Material khi chỉ dán vào sheet OUT.</p>
+              </div>
+              <form className="space-y-3 rounded-2xl bg-white p-5 shadow-sm" onSubmit={e => { e.preventDefault(); void action(() => openRequest(session, historySearch)); }}>
+                <label htmlFor="request-id-search" className="block font-semibold">Mở trực tiếp phiếu bất kỳ theo UUID hoặc link đã nhận</label>
+                <div className="flex flex-wrap gap-2"><Input id="request-id-search" className="min-w-0 flex-1" value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="UUID hoặc https://…?request=UUID" /><Button disabled={busy || !historySearch.trim()}>Mở phiếu</Button></div>
+                <p className="text-sm text-slate-600">Tìm trực tiếp trên máy chủ, kể cả phiếu không còn trong 500 phiếu gần đây. Chỉ mở được phiếu thuộc quyền tài khoản.</p>
+              </form>
+              {focusedRequest ? <div className="space-y-2 rounded-2xl border-2 border-blue-300 p-3"><div className="flex items-center gap-2"><h2 className="mr-auto font-bold">Phiếu mở trực tiếp (không phụ thuộc bộ lọc dưới)</h2><Button variant="outline" size="sm" onClick={() => { setFocusedRequest(null); const url = new URL(window.location.href); url.searchParams.delete("request"); window.history.replaceState(null, "", url); }}>Đóng</Button></div>{renderRequest(focusedRequest)}</div> : null}
+              <div className="space-y-3 rounded-2xl bg-white p-5 shadow-sm">
+                <h2 className="text-xl font-bold">Lịch sử đầy đủ, phân trang từ máy chủ</h2>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label>Tạo từ ngày<Input type="date" value={historyFilter.from} onChange={e => setHistoryFilter(previous => ({ ...previous, from: e.target.value }))} /></label>
+                  <label>Tạo đến hết ngày<Input type="date" value={historyFilter.to} onChange={e => setHistoryFilter(previous => ({ ...previous, to: e.target.value }))} /></label>
+                  <label className="grid gap-1">Trạng thái<select aria-label="Trạng thái lịch sử" className="h-10 rounded-md border border-input bg-white px-3" value={historyFilter.status} onChange={e => setHistoryFilter(previous => ({ ...previous, status: e.target.value }))}><option value="">Tất cả</option>{Object.entries(statusName).map(([status, label]) => <option key={status} value={status}>{label}</option>)}</select></label>
+                  <Button variant="outline" disabled={historyLoading} onClick={() => void loadHistory(session, historyFilter, historyGeneration.current)}><RefreshCw className="h-4 w-4" />Làm mới lịch sử từ trang đầu</Button>
+                  <Button variant="outline" onClick={() => { setHistoryFilter({ from: "", to: "", status: "" }); setHistoryText(""); }}>Bỏ bộ lọc</Button>
+                </div>
+                <label className="block">Lọc nội dung trong các phiếu đã tải<Input value={historyText} onChange={e => setHistoryText(e.target.value)} placeholder="Mã vật tư, tên, JOB, tên người, số phiếu…" /></label>
+                <p className="text-sm text-slate-600">Máy chủ tìm thấy {history.total_count} phiếu theo bộ lọc. Đã tải {history.items.length} phiếu. Bấm tải tiếp để xem toàn bộ; không giới hạn ở 500. Bộ lọc ngày dùng ngày tạo yêu cầu, không phải ngày thực cấp.</p>
+              </div>
+              {history.items.filter(r => r.id !== focusedRequest?.id && `${r.id} ${r.request_no} ${r.job_code} ${r.vessel || ""} ${r.requester_name} ${r.lines.map(line => `${line.material_code} ${line.description}`).join(" ")}`.toLocaleLowerCase("vi").includes(historyText.trim().toLocaleLowerCase("vi"))).map(renderRequest)}
+              {historyLoading ? <p role="status" className="p-3">Đang lấy lịch sử từ máy chủ…</p> : null}
+              {!historyLoading && !history.items.length ? <p className="rounded-xl bg-white p-5">Không có phiếu phù hợp trong quyền tài khoản.</p> : null}
+              {history.has_more ? <Button className="w-full" disabled={historyLoading || !history.next_cursor} onClick={() => void loadHistory(session, historyFilter, historyGeneration.current, history.next_cursor)}>Tải tiếp 50 phiếu cũ hơn</Button> : history.items.length ? <p className="text-center text-sm text-slate-500">Đã tải hết các phiếu của bộ lọc tại lần truy vấn này.</p> : null}
+            </section>}
             {tab === "notices" && (
               <section className="space-y-3">
                 {notices.map((n) => (
@@ -768,6 +927,7 @@ export default function WorkflowApp() {
                     <p className="my-2 text-sm text-slate-500">
                       {time(n.created_at)}
                     </p>
+                    {n.request_id ? <Button className="mr-2" size="sm" variant="outline" disabled={busy} onClick={() => void action(() => openRequest(session, n.request_id!))}>Mở phiếu liên quan</Button> : null}
                     {!n.read_at && (
                       <Button
                         size="sm"

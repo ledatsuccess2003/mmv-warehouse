@@ -209,3 +209,118 @@ need an approved reconciliation/adjustment design with export checkpoints.
 
 Migration authoring/static parsing is not equivalent to applying it to live
 Supabase or passing these runtime checks; record actual evidence separately.
+
+## Additive complete history and daily reporting
+
+Apply `migrations/20261018_history.sql` **after** the requests migration. This
+additive migration creates three read-only APIs and supporting indexes; it
+does not change stock, existing business rows, approval rules, user roles or
+credentials. Requests/lines/events have no automatic expiry or weekly reset.
+An 8-hour login session expiry requires signing in again; it does not delete
+Monday's requests when they are looked up on Friday.
+
+### Complete cursor history
+
+```text
+mmv_history(
+  p_token TEXT,
+  p_from DATE = NULL,
+  p_to DATE = NULL,
+  p_status TEXT = NULL,
+  p_before_created_at TIMESTAMPTZ = NULL,
+  p_before_id UUID = NULL,
+  p_limit INTEGER = 50
+) -> {
+  items: [full nested request...],
+  has_more: BOOLEAN,
+  next_cursor: {created_at: ISO timestamp, id: UUID} | null,
+  total_count: INTEGER
+}
+```
+
+- `p_from` and `p_to` are inclusive **Vietnamese submission/created dates**.
+  A date's interval is `[00:00, next 00:00)` in `Asia/Ho_Chi_Minh`, regardless
+  of a browser/server/session's local timezone. They are not physical issue dates.
+- Null status means all statuses; otherwise it must be exactly `pending`,
+  `approved`, `rejected`, `cancelled`, or `issued`. Reversed date ranges fail.
+- Page size must be 1–100. Pass both cursor fields or neither. For another page,
+  pass the **unaltered** `next_cursor` from the previous response and the same
+  filters. Reset the cursor when changing a filter or refreshing history.
+- Ordering is `created_at DESC, id DESC`, including when hundreds of requests
+  share an identical timestamp. The cursor is the last returned item, not the
+  extra row used to detect another page. The final response has `has_more:false`
+  and `next_cursor:null`. The filtered total is computed across the entire
+  authorized database, not just the current page or last 500 requests.
+- Scope is enforced server-side: requester sees their own, designated approvers
+  see requests that include them, warehouse/admin see all. Counts obey the same
+  scope. A client-provided requester ID or role cannot expand it.
+- Unlike the legacy `mmv_requests` convenience feed, this API is not capped to
+  500 records overall. Continue loading pages to reach the oldest record.
+  Filter/current-status changes between refreshes can change the matching set;
+  this is live reporting, not a frozen historical status reconstruction.
+
+The client RPC adapter must normalize `response.items`, not just array-shaped
+responses. Old notification links should fetch `mmv_request(p_token,UUID)`
+directly instead of assuming a UUID exists in the latest loaded history page.
+That authorized full-detail endpoint remains independent of pagination.
+
+### Full export source by stable request UUID
+
+`mmv_export_request(p_token TEXT,p_request_id UUID)` returns the same full nested
+request snapshot, including canonical code/name/unit, approved and actual
+quantities, real SIV number, actor, timestamps, approvals and complete events.
+Only credential-authenticated warehouse/admin may call it; an unknown request,
+draft/pending/approved/rejected/cancelled request or request with no positive
+physical issue is rejected. It does not change stock, mark an Excel import as
+complete, or create a new issue. Zero-quantity lines are retained in the source
+evidence but must not become positive OUT/Movement rows in the workbook.
+
+`mmv_export_day` remains the unpaginated source of **all physically issued**
+requests on an issue date. A request created Monday but issued Friday belongs
+to Monday's submission history and Friday's physical OUT export, not Monday's
+OUT export. Exporting an old request again does not subtract database stock;
+operators must still prevent importing the same line IDs into Excel twice.
+
+### Complete daily summaries (today, yesterday, or an older day)
+
+`mmv_day_summary(p_token TEXT,p_date DATE)` returns:
+
+```text
+{
+  date,
+  created_requests, requesters,
+  pending, approved, rejected, cancelled,
+  issued_requests, issued_requesters, issued_lines,
+  issued_by_item: [{material_code, description, unit, quantity}]
+}
+```
+
+Every number is computed over **all authorized matching rows**, with no recent-
+history/page/500-row cap. `requesters` and `issued_requesters` are distinct-person
+**counts**, not lists. Empty days explicitly return zero counts and an empty
+item array. Unauthorized requests never affect a worker's visible totals.
+
+The two date bases are intentionally different and must be labeled clearly:
+
+- `created_requests`, `requesters` and the four status counts refer to requests
+  **created on that Vietnamese date**, using their **current** status. They do
+  not claim to show how many were pending at that historical day's close. The
+  four status counts omit requests now issued, so they need not add up to all
+  created requests.
+- `issued_requests`/`issued_requesters` refer to requests physically issued on
+  the chosen Vietnamese date, even if submitted earlier. `issued_lines` counts
+  positive actual-issued lines only. Zero/unissued lines are not counted.
+- `issued_by_item` sums positive actual quantities separately by exact
+  **code + recorded description + unit**. It never combines pairs, metres,
+  litres or other incompatible units into one misleading grand quantity.
+
+The UI should compute today/yesterday as Vietnamese calendar dates. Do not
+derive yesterday from a browser's local midnight or display the latest 500-row
+client list as a complete daily total.
+
+Regression coverage is in `tests/history.sql`: more than 500 issued requests,
+identical timestamp cursors across 13 pages, private worker visibility, a Monday
+request looked up/exported on Friday, Vietnamese midnight boundaries under a
+non-Vietnamese database session timezone, zero-quantity evidence and no stock/
+ledger mutation. Run only against a fresh disposable database; fixtures roll
+back. Production execution/UI verification must be recorded separately.
