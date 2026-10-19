@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InstallAppPrompt } from "@/components/InstallAppPrompt";
+import { prepareExcelDownload, startExcelDownload, revokeExcelDownload, type PreparedExcelDownload } from "@/lib/browserDownload";
 import {
   rpc,
   savedSession,
@@ -134,9 +135,10 @@ type RequestCardProps = {
   onIssue: (request: WarehouseRequest) => void;
   onCancel: (request: WarehouseRequest) => void;
   onDownload: (request: WarehouseRequest, physical: boolean) => void;
+  preparedDownload?: PreparedExcelDownload;
 };
 
-function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity, onVoucher, onApprove, onIssue, onCancel, onDownload }: RequestCardProps) {
+function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity, onVoucher, onApprove, onIssue, onCancel, onDownload, preparedDownload }: RequestCardProps) {
   const canIssue = ["admin", "warehouse"].includes(session.user.role);
   return <article id={`request-${r.id}`} className="rounded-2xl border border-slate-200 bg-white p-5">
     <div className="flex flex-wrap items-start gap-3">
@@ -156,10 +158,16 @@ function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity,
     </table></div>
     <p className="text-sm text-slate-600">Phê duyệt: {r.approvals.length ? r.approvals.map(a => `${a.user_name || a.user_id}: ${a.decision || (a.decided_at ? (a.approved ? "đồng ý" : "từ chối") : "chờ")}`).join(" · ") : "Đang chờ hai người duyệt"}</p>
     <div className="mt-3 flex flex-wrap gap-2">
-      {r.status !== "issued" ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, false)}><Download className="h-4 w-4 shrink-0" />Tải phiếu yêu cầu (chưa xuất kho)</Button> : canIssue ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, true)}><Download className="h-4 w-4 shrink-0" />Tải OUT thực cấp của phiếu</Button> : null}
+      {r.status !== "issued" ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, false)}><Download className="h-4 w-4 shrink-0" />Tải Excel mẫu OUT (chưa xuất kho)</Button> : canIssue ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, true)}><Download className="h-4 w-4 shrink-0" />Tải OUT thực cấp của phiếu</Button> : null}
       {session.can_approve && r.status === "pending" ? <><Button disabled={busy} onClick={() => onApprove(r, true)}><CheckCircle className="h-4 w-4" />Đồng ý</Button><Button disabled={busy} variant="outline" onClick={() => onApprove(r, false)}>Từ chối</Button></> : null}
       {r.requester_id === session.user.id && ["pending", "approved"].includes(r.status) ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onCancel(r)}>Hủy yêu cầu của tôi</Button> : null}
     </div>
+    {preparedDownload ? <div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
+      <p className="font-semibold">File Excel theo bố cục OUT đã sẵn sàng.</p>
+      <p className="my-2 break-all text-sm">{preparedDownload.filename}</p>
+      <a href={preparedDownload.url} download={preparedDownload.filename} aria-disabled={busy} onClick={event => { if (busy) event.preventDefault(); }} className={`inline-flex min-h-12 items-center justify-center rounded-lg bg-emerald-800 px-4 py-3 font-bold text-white focus-visible:outline focus-visible:outline-2 ${wrappingActionClass}`}>Bấm để lưu file Excel vào máy</a>
+      <p className="mt-2 text-sm">Nếu lần tải đầu chưa xuất hiện, bấm nút trên để tải trực tiếp. {r.status === "issued" ? "Bản OUT dùng số lượng thực cấp đã lưu." : "Đây là bản CHƯA XUẤT KHO, không dùng để ghi giảm tồn."}</p>
+    </div> : null}
     {canIssue && r.status === "approved" ? <div className="mt-4 flex flex-wrap gap-3"><Input className="max-w-xs" aria-label={`Số phiếu ${r.request_no}`} placeholder="Số SIV đã đối chiếu với Excel" value={voucher} onChange={e => onVoucher(e.target.value)} /><Button className={wrappingActionClass} disabled={busy} onClick={() => onIssue(r)}>Xác nhận đã cấp thực tế</Button><p className="w-full text-sm text-amber-800">Nhập số thực cấp cho từng dòng; nhập 0 nếu không cấp. Không tự lấy số yêu cầu làm số thực cấp.</p></div> : null}
     <details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold">Dấu vết xử lý được lưu trên máy chủ</summary>{r.events.map((event, index) => <p className="py-1" key={`${event.created_at}-${index}`}>{time(event.created_at)} · {event.actor_name} · {event.event_type || event.action} {event.note}</p>)}</details>
   </article>;
@@ -197,6 +205,8 @@ export default function WorkflowApp() {
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null),
     [confirmationReason, setConfirmationReason] = useState(""),
     [confirmationError, setConfirmationError] = useState("");
+  const [preparedDownload, setPreparedDownload] = useState<(PreparedExcelDownload & { requestId: string; requestStatus: string; ownerToken: string }) | null>(null);
+  useEffect(() => () => { if (preparedDownload) revokeExcelDownload(preparedDownload); }, [preparedDownload]);
   const submitKey = useRef(crypto.randomUUID()),
     issueKeys = useRef<Record<string, string>>({}),
     syncing = useRef(new Set<string>()),
@@ -305,6 +315,7 @@ export default function WorkflowApp() {
       identityGeneration.current += 1;
       keepSession(null);
       setSession(null);
+      setPreparedDownload(null);
       setMaterials([]);
       setRequests([]);
       setNotices([]);
@@ -423,6 +434,7 @@ export default function WorkflowApp() {
       setSummaries({});
       setFocusedRequest(null);
       historyScope.current = "";
+      setPreparedDownload(null);
       setConfirmation(null);
       setConfirmationReason("");
       setConfirmationError("");
@@ -449,6 +461,7 @@ export default function WorkflowApp() {
     historyScope.current = "";
     keepSession(null);
     setSession(null);
+    setPreparedDownload(null);
     setRequests([]);
     setMaterials([]);
     setNotices([]);
@@ -638,26 +651,33 @@ export default function WorkflowApp() {
   async function downloadRequest(r: WarehouseRequest, physical: boolean) {
     if (!session) return;
     await action(async () => {
+      setPreparedDownload(null);
       if (physical && !isWarehouse) throw new Error("Chỉ kho/admin được tải phiếu OUT thực cấp.");
       const fresh = await rpc<WarehouseRequest>(physical ? "mmv_export_request" : "mmv_request", { p_token: session.token, p_request_id: r.id });
       if (activeToken.current !== session.token) return;
       updateRequest(fresh);
       const exporter = await import("@/lib/requestOut");
       if (activeToken.current !== session.token) return;
+      let workbook: ReturnType<typeof exporter.buildRequestOutWorkbook>;
+      let filename: string;
       if (physical) {
         if (fresh.status !== "issued" || !fresh.issued_at) throw new Error("Phiếu chưa được xác nhận cấp thực tế.");
         const issuedDay = vietnamDate(new Date(fresh.issued_at));
-        const workbook = exporter.buildRequestOutWorkbook([physicalExportInput(fresh)], issuedDay);
-        exporter.saveRequestOutWorkbook(workbook, `OUT_MMV_${issuedDay}_${fresh.id}.xlsx`);
+        workbook = exporter.buildRequestOutWorkbook([physicalExportInput(fresh)], issuedDay);
+        filename = `OUT_MMV_${issuedDay}_${fresh.id}.xlsx`;
       } else {
         if (fresh.status === "issued") throw new Error("Phiếu đã thực cấp. Kho/admin cần tải OUT thực cấp, không dùng bản yêu cầu.");
-        const workbook = exporter.buildRequestVoucherWorkbook(fresh);
-        exporter.saveRequestVoucherWorkbook(workbook, `YEU_CAU_MMV_${fresh.id}.xlsx`);
+        workbook = exporter.buildRequestVoucherWorkbook(fresh);
+        const jobLabel = fresh.job_code.replace(/[<>:"/\\|?*]|\p{Cc}/gu, "_").slice(0, 48);
+        filename = `YEU_CAU_MAU_OUT_${fresh.request_no}_${jobLabel}.xlsx`;
       }
-      setMessage("Đã tải bản sao mới từ máy chủ. Tải file không xóa phiếu, không xác nhận cấp hàng và không trừ tồn thêm.");
+      const ready = prepareExcelDownload(exporter.serializeRequestOutWorkbook(workbook), filename);
+      setPreparedDownload({ ...ready, requestId: fresh.id, requestStatus: fresh.status, ownerToken: session.token });
+      try { startExcelDownload(ready); } catch { /* The visible anchor below is the direct user-gesture fallback. */ }
+      setMessage("File Excel đã sẵn sàng. Nếu trình duyệt chưa lưu file, bấm ‘Bấm để lưu file Excel vào máy’ ngay dưới phiếu. Tải file không xác nhận cấp hàng và không trừ tồn.");
     });
   }
-  const renderRequest = (r: WarehouseRequest) => session ? <RequestCard key={r.id} request={r} session={session} busy={busy} issueQty={issueQty} voucher={voucher[r.id] || ""} onQuantity={(id, value) => setIssueQty(previous => ({ ...previous, [id]: value }))} onVoucher={value => setVoucher(previous => ({ ...previous, [r.id]: value }))} onApprove={approve} onIssue={issue} onCancel={cancelRequest} onDownload={downloadRequest} /> : null;
+  const renderRequest = (r: WarehouseRequest) => session ? <RequestCard key={r.id} request={r} session={session} busy={busy} issueQty={issueQty} voucher={voucher[r.id] || ""} onQuantity={(id, value) => setIssueQty(previous => ({ ...previous, [id]: value }))} onVoucher={value => setVoucher(previous => ({ ...previous, [r.id]: value }))} onApprove={approve} onIssue={issue} onCancel={cancelRequest} onDownload={downloadRequest} preparedDownload={preparedDownload?.ownerToken === session.token && preparedDownload.requestId === r.id && preparedDownload.requestStatus === r.status ? preparedDownload : undefined} /> : null;
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="bg-[#143c60] text-white">

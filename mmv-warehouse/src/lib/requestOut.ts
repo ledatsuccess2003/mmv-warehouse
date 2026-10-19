@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx-js-style'
+import { saveExcelDownload } from './browserDownload'
 
 /** Canonical Material snapshots captured when the warehouse confirms physical issue. */
 export interface RequestOutLine {
@@ -528,14 +529,7 @@ export function downloadRequestOutWorkbook(requests: RequestOutRequest[], date: 
 
 /** Download only after a deliberate button click; never called automatically on page load. */
 export function saveRequestOutWorkbook(wb: RequestOutWorkbook, filename: string): void {
-  const bytes = serializeRequestOutWorkbook(wb)
-  const blob = new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  saveExcelDownload(serializeRequestOutWorkbook(wb), filename)
 }
 
 export function saveRequestVoucherWorkbook(wb: RequestOutWorkbook, filename: string): void {
