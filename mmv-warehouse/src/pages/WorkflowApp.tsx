@@ -698,8 +698,8 @@ export default function WorkflowApp() {
           <section className="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-bold">Chọn tên của bạn</h2>
             <p className="my-3 text-slate-600">
-              Không bắt buộc cài app. Người duyệt và kho dùng thêm mật khẩu
-              riêng để tránh duyệt thay.
+              Không bắt buộc cài app. Người duyệt và kho cần nhập mật khẩu
+              để sử dụng đúng quyền tài khoản.
             </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {users.map((u) => (

@@ -10,8 +10,9 @@
    IDs must be checked against actual names first, not guessed from names.
 5. Owner privately calls `mmv_set_pin(<ID>, <private credential>)` for the two
    approvers and every warehouse/admin account that will perform elevated actions.
-   Use a different secret of 8–72 bytes per person. Known defaults/repeated
-   characters are rejected. Never put these calls/values in Git or chat.
+   By default use a different secret of 8–72 bytes per person. Known defaults/repeated
+   characters are rejected. See the explicitly approved group exception below.
+   Never put provisioning calls containing real credentials in Git or chat.
 6. Import the October Material baseline **before any request is submitted** using
    the owner-only snapshot RPC described below. No seed/example stock qualifies.
 
@@ -21,6 +22,32 @@ clears legacy plaintext `users.pin`. It preserves ledger rows. Private helpers,
 PIN hashes, session hashes, device keys and the push outbox are not accessible
 to `anon`/`authenticated`. Service-only functions are granted only to
 `service_role`; SQL owner has the normal implicit owner permissions.
+
+### Owner-approved credential sharing (2026-10-19)
+
+Apply `migrations/20261019_credential_groups.sql` after the request migration.
+It seeds **no users or credentials** and leaves stock, request history, roles and
+the two-approver physical-issue rule unchanged. Membership starts empty.
+
+The owner explicitly approved one shared credential for the two named designated
+approvers, and a **different** shared credential for Admin 1/2/3. The owner/service
+configures the five IDs with `mmv_configure_credential_groups(integer[],integer[])`
+after checking the actual directory names. It accepts exactly two active designated
+approvers and three active admins with no overlap. Browser roles cannot call it.
+
+`mmv_set_pin` then allows duplicates **only inside the same configured group**.
+Cross-group reuse and reuse by an unlisted employee remain blocked. The configured
+approver pair may use a common/default credential as expressly accepted by the
+owner; other accounts retain the common-password block. Minimum length, byte
+limit, repeated-character checks, salted bcrypt hashes, session revocation on
+reset, five-failure login limit and server-side role checks remain enforced.
+
+Do not publish the selected passwords in code, environment variables or tests.
+The owner must enter and submit the new credentials privately in Supabase.
+Configure membership first; this migration and deploying the frontend alone do
+**not** set any password. Rotate credentials if group membership changes. Shared
+credentials mean audit records identify the selected account, not reliably the
+physical individual who clicked it; both named approvers are still required.
 
 Security-definer functions use an empty pinned `search_path`, schema-qualified
 relations, and explicit EXECUTE grants, following
