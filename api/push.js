@@ -53,14 +53,23 @@ export default async function handler(req, res) {
       headers,
       body: JSON.stringify(args),
     });
-    if (!response.ok) throw new Error(`Database RPC failed: ${name}`);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(`Database RPC failed: ${name}`);
+      error.rpc = name;
+      error.status = response.status;
+      error.dbCode = /^[A-Z0-9]{5,12}$/.test(payload.code || '') ? payload.code : 'UNKNOWN';
+      throw error;
+    }
     return response.json();
   }
   if (!cronRequest) {
     try {
       await rpc("mmv_session", { p_token: token });
-    } catch {
-      return res.status(401).end();
+    } catch (error) {
+      if (error.dbCode === '28000') return res.status(401).json({error:'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.'});
+      console.error('mmv_push_failure', { stage:'session_validation', rpc:error.rpc || 'network', status:error.status || 0, code:error.dbCode || 'NETWORK' });
+      return res.status(503).json({error:'Máy chủ chưa xác minh được phiên với Supabase. Kiểm tra khóa server và URL dự án trên Vercel.',stage:'session_validation'});
     }
   }
   try {
@@ -69,12 +78,13 @@ export default async function handler(req, res) {
     let delivered = 0;
     await Promise.all(
       rows.map(async (row) => {
-        let failed = false,
+        let failureReason = 'No registered device', failed = false,
           sent = 0;
         await Promise.all(
           row.subscriptions.map(async (sub) => {
             if (!allowedEndpoint.test(sub.endpoint)) {
               failed = true;
+              failureReason = 'Unsupported push provider';
               return;
             }
             try {
@@ -91,6 +101,7 @@ export default async function handler(req, res) {
               );
               sent++;
             } catch (error) {
+              failureReason = `Push provider HTTP ${Number(error.statusCode) || 0}`;
               if (error.statusCode === 404 || error.statusCode === 410)
                 await rpc("mmv_push_remove_expired", {
                   p_subscription_id: sub.id,
@@ -107,17 +118,19 @@ export default async function handler(req, res) {
           p_delivered: success,
           p_error: success
             ? null
-            : "No active device or temporary push delivery failure",
+            : failureReason,
         });
         if (success) delivered++;
       }),
     );
     return res.status(200).json({ delivered });
-  } catch {
+  } catch (error) {
+    console.error('mmv_push_failure', {stage:'dispatch',rpc:error.rpc || 'push_transport',status:error.status || 0,code:error.dbCode || 'TRANSPORT'});
     return res
       .status(502)
       .json({
-        error: "Push delivery unavailable; inbox records are retained.",
+        error: "Máy chủ gửi thông báo gặp lỗi. Hộp thư và phiếu vẫn được giữ nguyên.",
+        stage: error.rpc === 'mmv_claim_push_outbox' ? 'outbox_claim' : 'push_dispatch',
       });
   }
 }

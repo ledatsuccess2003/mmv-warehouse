@@ -17,7 +17,7 @@ const subscription = { id: 'device-uuid', endpoint: 'https://fcm.googleapis.com/
 const outbox = { id: 12, lease_token: 'lease-uuid', notification: { id: 99, request_id: 'request-uuid',
   title: 'Private job information', body: 'Private material description' }, subscriptions: [subscription] }
 
-function harness({ env = testEnv, rows = [outbox], sendError, rejectSession = false } = {}) {
+function harness({ env = testEnv, rows = [outbox], sendError, rejectSession = false, rpcError } = {}) {
   const rpcCalls = [], pushCalls = [], secretComparisons = []
   const timingSafeEqual = (actual, expected) => {
     secretComparisons.push({ actual: Buffer.from(actual), expected: Buffer.from(expected) })
@@ -31,8 +31,9 @@ function harness({ env = testEnv, rows = [outbox], sendError, rejectSession = fa
     const name = new URL(url).pathname.split('/').at(-1)
     const args = JSON.parse(options.body)
     rpcCalls.push({ name, args, headers: options.headers })
+    if (rpcError?.name === name) return { ok:false, status:rpcError.status || 403, async json() { return {code:rpcError.code,message:'Never expose provider response or secrets'} } }
     const data = name === 'mmv_claim_push_outbox' ? rows : name === 'mmv_session' ? { user: { id: 1 } } : { ok: true }
-    return { ok: !(name === 'mmv_session' && rejectSession), async json() { return data } }
+    return { ok: !(name === 'mmv_session' && rejectSession), status:400, async json() { return name === 'mmv_session' && rejectSession ? {code:'28000'} : data } }
   }
   const handler = vm.runInNewContext(`${source}\nhandler`, { webpush, timingSafeEqual, Buffer, process: { env }, fetch, URL })
   const response = { headers: {}, code: 200, body: undefined,
@@ -79,6 +80,25 @@ test('expired/invalid session cannot claim the durable push outbox', async () =>
   const h = harness({ rejectSession: true })
   assert.equal((await h.run()).code, 401)
   assert.deepEqual(h.rpcCalls.map(call => call.name), ['mmv_session'])
+})
+
+test('a server database/key failure is not mislabeled as the employee password being wrong', async () => {
+  const h = harness({rpcError:{name:'mmv_session',code:'42501'}})
+  const r = await h.run()
+  assert.equal(r.code,503)
+  assert.equal(r.body.stage,'session_validation')
+  assert.equal(h.rpcCalls.length,1)
+  assert.equal(h.pushCalls.length,0)
+  assert.equal(JSON.stringify(r.body).includes('synthetic-service-key'),false)
+})
+
+test('outbox permission/configuration failure is distinguished from an unregistered phone', async () => {
+  const h = harness({rpcError:{name:'mmv_claim_push_outbox',code:'42501'}})
+  const r = await h.run()
+  assert.equal(r.code,502)
+  assert.equal(r.body.stage,'outbox_claim')
+  assert.equal(h.pushCalls.length,0)
+  assert.equal(JSON.stringify(r.body).includes('Never expose'),false)
 })
 
 test('verified request claims a bounded batch and acknowledges exactly the lease after successful send', async () => {

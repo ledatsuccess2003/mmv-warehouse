@@ -684,7 +684,7 @@ export default function WorkflowApp() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="bg-[#143c60] text-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-4">
           <Anchor className="h-8 w-8" />
           <div>
             <h1 className="text-xl font-extrabold">Kho vật tư MMV</h1>
@@ -692,8 +692,9 @@ export default function WorkflowApp() {
               Yêu cầu rõ ràng · Duyệt có dấu vết · Cấp đúng thực tế
             </p>
           </div>
+          {session && <Button className="ml-auto relative text-slate-900" variant="outline" aria-label={`Chuông thông báo: ${notices.filter(n => !n.read_at).length} chưa đọc`} onClick={() => setTab("notices")}><Bell className="h-5 w-5" /><span aria-live="polite">{notices.filter(n => !n.read_at).length}</span></Button>}
           {session && (
-            <Button className="ml-auto" variant="outline" onClick={logout}>
+            <Button variant="outline" onClick={logout}>
               <LogOut className="h-4 w-4" />
               Đăng xuất
             </Button>
@@ -839,7 +840,7 @@ export default function WorkflowApp() {
               </Button>
             </nav>
             <p className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">Yêu cầu, phê duyệt, số thực cấp và lịch sử được lưu trên máy chủ Supabase, không chỉ trên thiết bị này. Tải file là lấy bản sao, không xóa phiếu và không trừ tồn thêm. Không bắt buộc cài app; thông báo nền còn phụ thuộc trình duyệt và quyền thiết bị.</p>
-            <NotificationHealth />
+            <NotificationHealth key={session.token} token={session.token} />
             <p className="text-sm text-slate-600">Ghi nhớ đăng nhập trên thiết bị này tối đa 30 ngày kể từ lần đăng nhập mới. Không lưu mật khẩu. Dùng máy chung hãy bấm Đăng xuất sau khi làm việc.</p>
             {notices.some(n => !n.read_at) && tab !== "notices" ? <button className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-left text-blue-950" onClick={() => setTab("notices")}><b>Có {notices.filter(n => !n.read_at).length} thông báo chưa đọc</b><br />{notices.find(n => !n.read_at)?.title} — bấm để xem và mở phiếu.</button> : null}
             {tab === "trash" && <RequestTrash key={session.token} session={session} renderRequest={renderRequest} onChanged={async () => { setPreparedDownload(null); setFocusedRequest(null); setHistory(emptyHistory()); historyScope.current = ""; await load(session); }} />}
