@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InstallAppPrompt } from "@/components/InstallAppPrompt";
+import { RequestTrash, TrashAction } from "@/components/RequestTrash";
+import { NotificationHealth } from "@/components/NotificationHealth";
 import { prepareExcelDownload, startExcelDownload, revokeExcelDownload, type PreparedExcelDownload } from "@/lib/browserDownload";
 import {
   rpc,
@@ -139,7 +141,7 @@ type RequestCardProps = {
 };
 
 function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity, onVoucher, onApprove, onIssue, onCancel, onDownload, preparedDownload }: RequestCardProps) {
-  const canIssue = ["admin", "warehouse"].includes(session.user.role);
+  const canIssue = !r.trashed_at && ["admin", "warehouse"].includes(session.user.role);
   return <article id={`request-${r.id}`} className="rounded-2xl border border-slate-200 bg-white p-5">
     <div className="flex flex-wrap items-start gap-3">
       <h2 className="mr-auto text-lg font-bold">#{r.request_no} · {r.job_code}</h2>
@@ -147,6 +149,7 @@ function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity,
     </div>
     <p className="my-2 text-sm text-slate-500">{r.requester_name} · Tạo {time(r.created_at)} {r.vessel ? `· ${r.vessel}` : ""}</p>
     <p className="break-all text-xs text-slate-500">ID phiếu: {r.id}</p>
+    {r.trashed_at ? <p className="my-3 rounded-lg bg-amber-50 p-3 text-amber-950">Trong Thùng rác · {time(r.trashed_at)} · {r.trashed_by_name} · {r.trash_reason}. Giữ nguyên trạng thái gốc, không hoàn tồn.</p> : null}
     {r.issued_at ? <p className="mt-1 text-sm text-emerald-800">Thực cấp {time(r.issued_at)} · SIV {r.voucher_no || "chưa có"}</p> : null}
     {r.note ? <p className="mt-2">{r.note}</p> : null}
     <div className="overflow-x-auto"><table className="my-3 w-full text-left text-sm">
@@ -158,9 +161,9 @@ function RequestCard({ request: r, session, busy, issueQty, voucher, onQuantity,
     </table></div>
     <p className="text-sm text-slate-600">Phê duyệt: {r.approvals.length ? r.approvals.map(a => `${a.user_name || a.user_id}: ${a.decision || (a.decided_at ? (a.approved ? "đồng ý" : "từ chối") : "chờ")}`).join(" · ") : "Đang chờ hai người duyệt"}</p>
     <div className="mt-3 flex flex-wrap gap-2">
-      {r.status !== "issued" ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, false)}><Download className="h-4 w-4 shrink-0" />Tải Excel mẫu OUT (chưa xuất kho)</Button> : canIssue ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, true)}><Download className="h-4 w-4 shrink-0" />Tải OUT thực cấp của phiếu</Button> : null}
-      {session.can_approve && r.status === "pending" ? <><Button disabled={busy} onClick={() => onApprove(r, true)}><CheckCircle className="h-4 w-4" />Đồng ý</Button><Button disabled={busy} variant="outline" onClick={() => onApprove(r, false)}>Từ chối</Button></> : null}
-      {r.requester_id === session.user.id && ["pending", "approved"].includes(r.status) ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onCancel(r)}>Hủy yêu cầu của tôi</Button> : null}
+      {r.status !== "issued" ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, false)}><Download className="h-4 w-4 shrink-0" />Tải Excel mẫu OUT (chưa xuất kho)</Button> : ["admin", "warehouse"].includes(session.user.role) ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onDownload(r, true)}><Download className="h-4 w-4 shrink-0" />Tải OUT thực cấp của phiếu</Button> : null}
+      {!r.trashed_at && session.can_approve && r.status === "pending" ? <><Button disabled={busy} onClick={() => onApprove(r, true)}><CheckCircle className="h-4 w-4" />Đồng ý</Button><Button disabled={busy} variant="outline" onClick={() => onApprove(r, false)}>Từ chối</Button></> : null}
+      {!r.trashed_at && r.requester_id === session.user.id && ["pending", "approved"].includes(r.status) ? <Button className={wrappingActionClass} disabled={busy} variant="outline" onClick={() => onCancel(r)}>Hủy yêu cầu của tôi</Button> : null}
     </div>
     {preparedDownload ? <div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
       <p className="font-semibold">File Excel theo bố cục OUT đã sẵn sàng.</p>
@@ -189,7 +192,7 @@ export default function WorkflowApp() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
-    [tab, setTab] = useState<"pick" | "requests" | "history" | "notices">("pick"),
+    [tab, setTab] = useState<"pick" | "requests" | "history" | "notices" | "trash">("pick"),
     [day, setDay] = useState(vietnamDate());
   const [lastSync, setLastSync] = useState(""),
     [issueQty, setIssueQty] = useState<Record<string, string>>({}),
@@ -518,7 +521,7 @@ export default function WorkflowApp() {
     });
   }
   async function approve(r: WarehouseRequest, yes: boolean) {
-    if (!session || busy || !session.can_approve || r.status !== "pending") return;
+    if (!session || busy || r.trashed_at || !session.can_approve || r.status !== "pending") return;
     if (!yes) {
       setConfirmation({ id: crypto.randomUUID(), token: session.token, kind: "reject", request: r });
       setConfirmationReason("");
@@ -546,7 +549,7 @@ export default function WorkflowApp() {
     setConfirmationError("");
   }
   async function issue(r: WarehouseRequest) {
-    if (!session || busy || !isWarehouse || r.status !== "approved") return;
+    if (!session || busy || r.trashed_at || !isWarehouse || r.status !== "approved") return;
     await action(async () => {
       if (!voucher[r.id]?.trim())
         throw new Error(
@@ -827,6 +830,7 @@ export default function WorkflowApp() {
                 Duyệt / Cấp gần đây
               </Button>
               <Button className={wrappingActionClass} variant={tab === "history" ? "default" : "outline"} onClick={() => setTab("history")}>Lịch sử đầy đủ / Tải phiếu</Button>
+              <Button variant={tab === "trash" ? "default" : "outline"} onClick={() => setTab("trash")}>Thùng rác / Truy vết</Button>
               <Button
                 variant={tab === "notices" ? "default" : "outline"}
                 onClick={() => setTab("notices")}
@@ -835,6 +839,10 @@ export default function WorkflowApp() {
               </Button>
             </nav>
             <p className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">Yêu cầu, phê duyệt, số thực cấp và lịch sử được lưu trên máy chủ Supabase, không chỉ trên thiết bị này. Tải file là lấy bản sao, không xóa phiếu và không trừ tồn thêm. Không bắt buộc cài app; thông báo nền còn phụ thuộc trình duyệt và quyền thiết bị.</p>
+            <NotificationHealth />
+            <p className="text-sm text-slate-600">Ghi nhớ đăng nhập trên thiết bị này tối đa 30 ngày kể từ lần đăng nhập mới. Không lưu mật khẩu. Dùng máy chung hãy bấm Đăng xuất sau khi làm việc.</p>
+            {notices.some(n => !n.read_at) && tab !== "notices" ? <button className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-left text-blue-950" onClick={() => setTab("notices")}><b>Có {notices.filter(n => !n.read_at).length} thông báo chưa đọc</b><br />{notices.find(n => !n.read_at)?.title} — bấm để xem và mở phiếu.</button> : null}
+            {tab === "trash" && <RequestTrash key={session.token} session={session} renderRequest={renderRequest} onChanged={async () => { setPreparedDownload(null); setFocusedRequest(null); setHistory(emptyHistory()); historyScope.current = ""; await load(session); }} />}
             {tab === "pick" && (
               <div className="grid gap-5 lg:grid-cols-[1fr_400px]">
                 <section>
@@ -988,7 +996,8 @@ export default function WorkflowApp() {
                   </div>
                 )}
                 <p className="text-sm text-slate-600">Phiếu gần đây (tối đa 500 phiếu). Mở “Lịch sử đầy đủ” để tìm và tải các phiếu cũ hơn.</p>
-                {requests.map(renderRequest)}
+                <TrashAction session={session} through={requests.reduce((max, r) => BigInt(r.request_no) > BigInt(max) ? r.request_no : max, "0") === "0" ? undefined : requests.reduce((max, r) => BigInt(r.request_no) > BigInt(max) ? r.request_no : max, "0")} onChanged={async () => { setPreparedDownload(null); setHistory(emptyHistory()); setFocusedRequest(null); historyScope.current = ""; await load(session); }} />
+                {requests.map(r => <div key={r.id}>{renderRequest(r)}<TrashAction session={session} request={r} onChanged={async () => { setPreparedDownload(null); setHistory(emptyHistory()); setFocusedRequest(null); historyScope.current = ""; await load(session); }} /></div>)}
                 {!requests.length && (
                   <p className="rounded-xl bg-white p-6">
                     Chưa có yêu cầu trong phạm vi tài khoản này.

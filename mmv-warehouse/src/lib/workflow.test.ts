@@ -12,8 +12,11 @@ function session(): WarehouseSession {
 }
 beforeEach(() => {
   store = new Map()
-  vi.stubGlobal('sessionStorage', { getItem: (k: string) => store.get(k) ?? null,
+  vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null,
     setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) })
+  const temporary = new Map<string, string>()
+  vi.stubGlobal('sessionStorage', { getItem: (k: string) => temporary.get(k) ?? null,
+    setItem: (k: string, v: string) => temporary.set(k, v), removeItem: (k: string) => temporary.delete(k) })
   vi.stubGlobal('window', new EventTarget())
   mockRpc.mockReset()
 })
@@ -137,6 +140,24 @@ describe('complete cursor history and old request access', () => {
 })
 
 describe('session persistence and explicit physical quantities', () => {
+  it('remembers a session after the temporary tab store is cleared and forgets it on logout', () => {
+    const current = session()
+    keepSession(current)
+    sessionStorage.removeItem(storageKey)
+    expect(localStorage.getItem(storageKey)).toBe(JSON.stringify(current))
+    expect(savedSession()).toEqual(current)
+    keepSession(null)
+    expect(savedSession()).toBeNull()
+    expect(localStorage.getItem(storageKey)).toBeNull()
+  })
+  it('migrates a legacy tab session to persistent device storage without storing passwords', () => {
+    const current = session()
+    sessionStorage.setItem(storageKey, JSON.stringify(current))
+    expect(savedSession()).toEqual(current)
+    expect(sessionStorage.getItem(storageKey)).toBeNull()
+    expect(localStorage.getItem(storageKey)).not.toContain('password')
+    expect(localStorage.getItem(storageKey)).not.toContain('pin')
+  })
   it('restores a valid session, rejects expired or malformed saved values, and removes invalid storage', () => {
     const current = session()
     keepSession(current)

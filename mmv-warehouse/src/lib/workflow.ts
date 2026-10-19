@@ -36,6 +36,9 @@ export type WarehouseRequest = {
   request_no: string;
   voucher_no?: string;
   status: string;
+  trashed_at?: string;
+  trashed_by_name?: string;
+  trash_reason?: string;
   job_code: string;
   vessel?: string;
   note?: string;
@@ -183,18 +186,18 @@ export async function rpc<T>(
   if (data?.ok === false)
     throw new Error(data.error || "Thao tác không thành công");
   if (data?.user) return { ...data, can_approve: !!data.user.can_approve } as T;
-  if (Array.isArray(data) && (name === "mmv_requests" || name === "mmv_export_day"))
+  if (Array.isArray(data) && ["mmv_requests", "mmv_export_day", "mmv_trash_list"].includes(name))
     return data.map(normalizeRequest) as T;
   if (name === "mmv_history" && data && Array.isArray(data.items))
     return { ...data, items: data.items.map(normalizeRequest) } as T;
-  if (data && ["mmv_request", "mmv_export_request", "mmv_submit_request", "mmv_approve_request", "mmv_cancel_request", "mmv_issue_request"].includes(name))
+  if (data && ["mmv_request", "mmv_export_request", "mmv_submit_request", "mmv_approve_request", "mmv_cancel_request", "mmv_issue_request", "mmv_trash_request"].includes(name))
     return normalizeRequest(data) as T;
   return data as T;
 }
 const storage = "mmv.workflow.session.v2";
 export function savedSession(): WarehouseSession | null {
   try {
-    const value = sessionStorage.getItem(storage),
+    const value = localStorage.getItem(storage) || sessionStorage.getItem(storage),
       s = value ? JSON.parse(value) : null;
     if (
       !s ||
@@ -204,17 +207,22 @@ export function savedSession(): WarehouseSession | null {
       !(Date.parse(s.expires_at) > Date.now())
     ) {
       sessionStorage.removeItem(storage);
+      localStorage.removeItem(storage);
       return null;
     }
+    localStorage.setItem(storage, JSON.stringify(s));
+    sessionStorage.removeItem(storage);
     return s;
   } catch {
     sessionStorage.removeItem(storage);
+    localStorage.removeItem(storage);
     return null;
   }
 }
 export function keepSession(session: WarehouseSession | null) {
-  if (session) sessionStorage.setItem(storage, JSON.stringify(session));
-  else sessionStorage.removeItem(storage);
+  sessionStorage.removeItem(storage);
+  if (session) localStorage.setItem(storage, JSON.stringify(session));
+  else localStorage.removeItem(storage);
 }
 export function validQty(value: unknown): number {
   if (

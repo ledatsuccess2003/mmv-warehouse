@@ -351,3 +351,31 @@ request looked up/exported on Friday, Vietnamese midnight boundaries under a
 non-Vietnamese database session timezone, zero-quantity evidence and no stock/
 ledger mutation. Run only against a fresh disposable database; fixtures roll
 back. Production execution/UI verification must be recorded separately.
+# Recoverable Trash and remembered login (2026-10-19)
+
+Apply `migrations/20261019_trash_sessions.sql` after the credential-groups migration.
+`mmv_trash_request(token, request_id, restore, reason)` is warehouse/admin-only,
+requires an audit reason, locks the request and appends an immutable `trashed` or
+`restored` event. Retries are idempotent. Original status/approvals/lines remain.
+`mmv_clear_requests(token, through, reason)` is admin-only; the request-number
+cutoff captured before confirmation excludes newly arriving requests. No hard
+delete, sequence reset, stock restoration, or movement deletion is provided.
+`mmv_requests` excludes Trash. `mmv_trash_list(token,before,limit)` uses descending
+request-number cursor pages (max100). Full history/direct links and issued
+exports/day totals retain archived transactions for traceability. Archived
+requests cannot be approved, cancelled or physically issued until restored.
+
+New sessions last30 days, remain server-revocable and are validated before the
+client renders privileged data. Browser storage saves only the existing opaque
+session, never a password; explicit logout clears persistent and legacy storage
+and revokes the session. Use logout on shared devices. Existing sessions keep
+their original expiry; sign in again to obtain a new30-day session.
+
+Notification delivery has two distinct conditions: durable per-user inbox/outbox
+rows are created on submission before approval; actual background push also
+requires server `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, VAPID keys, and a
+registered/permission-granted browser device for each recipient. An inbox row or
+successful request save is NOT proof of phone delivery. The UI displays server
+transport readiness and unread notifications prominently; missing configuration
+must never be reported as delivered. Do not place server secrets in VITE vars.
+
